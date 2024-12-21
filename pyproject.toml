@@ -306,6 +306,7 @@ max_supported_python = "3.12"
 
 xfail_strict = true
 log_cli = true
+addopts = "--mypy-pyproject-toml-file=pyproject.toml"
 
 [tool.coverage.run]
 
