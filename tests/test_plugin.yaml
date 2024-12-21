@@ -1,7 +1,9 @@
+# We use "allow_subclassing_any" to avoid hitting an issue as the tests
+# check typeshed which has subclasses of ``typing.Any``.
+
 - case: positional_only_allowed
   mypy_config: |
     [tool.mypy]
-    strict = true
     allow_subclassing_any = true
   main: |
     def func(a: int, /, b: str = "default") -> None: ...
@@ -10,7 +12,6 @@
 - case: positional_to_keyword_fail
   mypy_config: |
     [tool.mypy]
-    strict = true
     allow_subclassing_any = true
   main: |
     def func(a: int, b: str = "default") -> None: ...
