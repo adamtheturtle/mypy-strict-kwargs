@@ -1,16 +1,20 @@
 - case: positional_allowed
+  mypy_config: |
+    [tool.mypy]
+    strict = true
+    allow_subclassing_any = true
   main: |
     def func(a: int, b: str = "default") -> None: ...
     func(1)
     func(a=1, b="text")
 
 - case: positional_to_keyword_fail
-  main: |
-    def func(a: int, b: str = "default") -> None: ...
-    func(1, b="text")
   mypy_config: |
     [tool.mypy]
     strict = true
     allow_subclassing_any = true
+  main: |
+    def func(a: int, b: str = "default") -> None: ...
+    func(1, b="text")
   out: |
     main:2: error: Too many positional arguments for "func"  [misc]
