@@ -1,12 +1,15 @@
-- case: positional_allowed
+- case: positional_only_allowed
   mypy_config: |
     [tool.mypy]
     strict = true
     allow_subclassing_any = true
   main: |
-    def func(a: int, b: str = "default") -> None: ...
-    func(1)
-    func(a=1, b="text")
+    def func(a: int, /, b: str = "default") -> None: ...
+    func(1)  # Valid: a is positional-only
+    func(a=1, b="text")  # Invalid: a cannot be passed as a keyword argument
+  out: |
+    main:1: note: "func" defined here
+    main:3: error: Unexpected keyword argument "a" for "func"  [call-arg]
 
 - case: positional_to_keyword_fail
   mypy_config: |
