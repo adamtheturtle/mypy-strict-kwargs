@@ -330,6 +330,11 @@ plugins = [
 
 reportUnnecessaryTypeIgnoreComment = true
 typeCheckingMode = "strict"
+# See
+# https://github.com/microsoft/pyright/issues/9617#issuecomment-2558167677.
+# This defines as a constant a variable in the ``mypy`` source code which is
+# used to configure a type hint.
+defineConstant = { MYPYC = false }
 
 [tool.interrogate]
 fail-under = 100

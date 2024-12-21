@@ -27,9 +27,7 @@ def _transform_function_signature(
         else:
             new_arg_kinds.append(kind)
 
-    return original_sig.copy_modified(  # pyright: ignore[reportUnknownMemberType]
-        arg_kinds=new_arg_kinds,
-    )
+    return original_sig.copy_modified(arg_kinds=new_arg_kinds)
 
 
 class _KeywordOnlyPlugin(Plugin):
