@@ -77,6 +77,8 @@ optional-dependencies.release = [ "check-wheel-contents==0.6.1" ]
 urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
 urls.Source = "https://github.com/adamtheturtle/mypy-strict-kwargs"
 
+entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plugin"
+
 [tool.setuptools]
 zip-safe = false
 
@@ -269,6 +271,7 @@ make-summary-multi-line = true
 
 ignore = [
     ".checkmake-config.ini",
+    ".vscode/*",
     ".yamlfmt",
     "*.enc",
     ".pre-commit-config.yaml",
@@ -300,7 +303,7 @@ pep621_dev_dependency_groups = [
 [tool.pyproject-fmt]
 indent = 4
 keep_full_version = true
-max_supported_python = "3.12"
+max_supported_python = "3.13"
 
 [tool.pytest.ini_options]
 
@@ -361,6 +364,3 @@ exclude = [ ".venv" ]
 [tool.yamlfix]
 section_whitelines = 1
 whitelines = 1
-
-[project.entry-points."mypy.plugins"]
-mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plugin"
