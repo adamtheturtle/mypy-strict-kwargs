@@ -22,6 +22,11 @@
     def func(*, a: int) -> None: ...
     func(a=1)
 
+- case: keyword_only_optional
+  main: |
+    def func(*, a: int = 1) -> None: ...
+    func(a=1)
+
 - case: var_positional
   main: |
     def func(*args: str) -> None: ...
@@ -31,6 +36,11 @@
   main: |
     def func(**kwargs: str) -> None: ...
     func(a="extra")
+
+- case: positional_followed_by_var_positional
+  main: |
+    def func(a: int, *args: str) -> None: ...
+    func("extra")
 
 # TODO: Test (a: int, *args: str) -> None: ...
 # TODO: Test (a: int, **kwargs: str) -> None: ...
