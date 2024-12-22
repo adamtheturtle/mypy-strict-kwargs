@@ -1,11 +1,36 @@
-- case: positional_only_allowed
+- case: positional_only
   main: |
     def func(a: int, /, b: str = "default") -> None: ...
     func(1)
 
-- case: positional_to_keyword_fail
+- case: positional
   main: |
-    def func(a: int, b: str = "default") -> None: ...
-    func(1, b="text")
+    def func(a: int) -> None: ...
+    func(1)
   out: |
     main:2: error: Too many positional arguments for "func"  [misc]
+
+- case: positional_optional
+  main: |
+    def func(a: int = 1) -> None: ...
+    func(1)
+  out: |
+    main:2: error: Too many positional arguments for "func"  [misc]
+
+- case: keyword_only
+  main: |
+    def func(*, a: int) -> None: ...
+    func(a=1)
+
+- case: var_positional
+  main: |
+    def func(*args: str) -> None: ...
+    func("extra")
+
+- case: var_keyword
+  main: |
+    def func(**kwargs: str) -> None: ...
+    func(a="extra")
+
+# TODO: Test (a: int, *args: str) -> None: ...
+# TODO: Test (a: int, **kwargs: str) -> None: ...
