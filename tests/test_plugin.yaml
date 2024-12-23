@@ -71,5 +71,5 @@
         def method(self, a: int) -> None: ...
     c = C()
     c.method(1)
-  out: |
+  out: |-
     main:6: error: Too many positional arguments for "method" of "C"  [misc]
