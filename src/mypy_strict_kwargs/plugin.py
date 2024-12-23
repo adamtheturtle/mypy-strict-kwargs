@@ -30,8 +30,10 @@ def _transform_function_signature(
         # Transform positional arguments that can also be keyword arguments
         elif kind == ArgKind.ARG_POS:
             new_arg_kinds.append(ArgKind.ARG_NAMED)
-        else:
+        elif kind == ArgKind.ARG_OPT:
             new_arg_kinds.append(ArgKind.ARG_NAMED_OPT)
+        else:
+            new_arg_kinds.append(kind)
 
     return original_sig.copy_modified(arg_kinds=new_arg_kinds)
 
