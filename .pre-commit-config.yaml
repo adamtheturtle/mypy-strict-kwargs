@@ -289,14 +289,16 @@ repos:
         pass_filenames: false
         additional_dependencies: [uv==0.5.11]
 
-      - id: pyright-verifytypes
-        name: pyright-verifytypes
-        stages: [pre-push]
-        entry: uv run --extra=dev -m pyright --verifytypes mypy_strict_kwargs
-        language: python
-        pass_filenames: false
-        types_or: [python]
-        additional_dependencies: [uv==0.5.11]
+      # Skipped as mypy does not have good enough type hints for this to work.
+      #
+      # - id: pyright-verifytypes
+      #   name: pyright-verifytypes
+      #   stages: [pre-push]
+      #   entry: uv run --extra=dev -m pyright --verifytypes mypy_strict_kwargs
+      #   language: python
+      #   pass_filenames: false
+      #   types_or: [python]
+      #   additional_dependencies: [uv==0.5.11]
 
       - id: yamlfix
         name: yamlfix
