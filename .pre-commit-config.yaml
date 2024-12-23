@@ -23,7 +23,6 @@ ci:
     - pyproject-fmt-fix
     - pyright
     - pyright-docs
-    - pyright-verifytypes
     - pyroma
     - ruff-check-fix
     - ruff-check-fix-docs
