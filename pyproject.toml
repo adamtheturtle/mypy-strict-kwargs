@@ -335,6 +335,7 @@ follow_untyped_imports = true
 [tool.pyright]
 
 reportUnnecessaryTypeIgnoreComment = true
+enableTypeIgnoreComments = false
 typeCheckingMode = "strict"
 # See
 # https://github.com/microsoft/pyright/issues/9617#issuecomment-2558167677.
