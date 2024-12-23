@@ -11,6 +11,9 @@ With this plugin, ``mypy`` will only accept the form where keyword arguments are
 
 .. code-block:: python
 
+   """Showcase errors when calling a function without naming the arguments."""
+
+
    def add(a: int, b: int) -> int:
        """Add two numbers."""
        return a + b
