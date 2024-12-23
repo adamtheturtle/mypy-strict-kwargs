@@ -1,3 +1,4 @@
+---
 - case: positional_only
   main: |
     def func(a: int, /, b: str = "default") -> None: ...
@@ -7,5 +8,5 @@
   main: |
     def func(a: int, b: str = "default") -> None: ...
     func(1, b="text")
-  out: |
+  out: |-
     main:2: error: Too many positional arguments for "func"  [misc]

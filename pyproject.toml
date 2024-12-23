@@ -370,6 +370,10 @@ ignore_path = [
 [tool.vulture]
 # Duplicate some of .gitignore
 exclude = [ ".venv" ]
+ignore_names = [
+    # mypy hook.
+    "get_function_signature_hook",
+]
 
 [tool.yamlfix]
 section_whitelines = 1
