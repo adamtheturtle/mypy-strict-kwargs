@@ -329,6 +329,9 @@ files = [ "." ]
 exclude = [ "build" ]
 plugins = [
     "mypy_strict_kwargs",
+    # See
+    # https://mypy.readthedocs.io/en/latest/extending_mypy.html#useful-tools.
+    "mypy.plugins.proper_plugin",
 ]
 follow_untyped_imports = true
 
