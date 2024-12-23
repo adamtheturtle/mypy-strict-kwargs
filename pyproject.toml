@@ -309,7 +309,17 @@ max_supported_python = "3.13"
 
 xfail_strict = true
 log_cli = true
-addopts = "--mypy-pyproject-toml-file=pyproject.toml"
+# * Use this pyproject.toml file for mypy configuration of tests.
+#   * --mypy-pyproject-toml-file=pyproject.toml
+#
+# Do not test unrelated stubs:
+# https://github.com/typeddjango/pytest-mypy-plugins/issues/134
+#  * --mypy-only-local-stub
+#
+# Use the same process so that we can get coverage.
+#  * --mypy-same-process
+#  * The help documentation says that this "will create problems with import cache"
+addopts = "--mypy-pyproject-toml-file=pyproject.toml --mypy-only-local-stub --mypy-same-process"
 
 [tool.coverage.run]
 
