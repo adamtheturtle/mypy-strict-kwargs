@@ -183,6 +183,9 @@ load-plugins = [
 # Allow loading of arbitrary C extensions. Extensions are imported into the
 # active Python interpreter and may run arbitrary code.
 unsafe-load-any-extension = false
+extension-pkg-allow-list = [
+    "mypy",
+]
 
 [tool.pylint.'MESSAGES CONTROL']
 
