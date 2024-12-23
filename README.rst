@@ -12,6 +12,7 @@ With this plugin, ``mypy`` will only accept the form where keyword arguments are
 .. code-block:: python
 
    def add(a: int, b: int) -> int:
+       """Add two numbers."""
        return a + b
 
 
