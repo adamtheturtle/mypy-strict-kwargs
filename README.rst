@@ -4,20 +4,18 @@ mypy-strict-kwargs
 ==================
 
 Enforce using keyword arguments where possible.
+In the same spirit as a formatter - think ``black`` or ``ruff format`` - this lets you stop spending time discussing whether a particular function call should use keyword arguments.
 
-For example, if we have a function like this:
+For example, if we have a function which takes two regular argument, there are three ways to call it.
+With this plugin, ``mypy`` will only accept the form where keyword arguments are used.
 
 .. code-block:: python
 
    def func(a: int, b: int) -> None: ...
 
-then we can call it in multiple ways:
-
-.. code-block:: python
-
-   func(1, 2)
    func(a=1, b=2)  # With this plugin, mypy will only accept this form
-   func(1, b=2)
+   func(1, 2)  # type: ignore[misc]
+   func(1, b=2)  # type: ignore[misc]
 
 Installation
 ------------
