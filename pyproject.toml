@@ -363,8 +363,10 @@ ignore_path = [
 # Duplicate some of .gitignore
 exclude = [ ".venv" ]
 ignore_names = [
-    # mypy hook.
+    # mypy hooks:
+    # https://mypy.readthedocs.io/en/latest/extending_mypy.html#current-list-of-plugin-hooks.
     "get_function_signature_hook",
+    "get_method_signature_hook",
 ]
 
 [tool.yamlfix]

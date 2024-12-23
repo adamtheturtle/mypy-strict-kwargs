@@ -63,8 +63,13 @@
     def func(*args: str, a: int) -> None: ...
     func("a", a=1)
 
-- case: class
+- case: method
   main: |-
     class C:
-        def __init__(self, a: int) -> None: ...
-    C(a=1)
+        def __init__(self) -> None: ...
+
+        def method(self, a: int) -> None: ...
+    c = C()
+    c.method(1)
+  out: |-
+    main:6: error: Too many positional arguments for "method" of "C"  [misc]
