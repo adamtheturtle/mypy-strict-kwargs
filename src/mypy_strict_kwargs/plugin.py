@@ -5,12 +5,12 @@
 from collections.abc import Callable
 
 from mypy.nodes import ArgKind
-from mypy.plugin import FunctionSigContext, Plugin
+from mypy.plugin import FunctionSigContext, MethodSigContext, Plugin
 from mypy.types import CallableType
 
 
 def _transform_function_signature(
-    ctx: FunctionSigContext,
+    ctx: FunctionSigContext | MethodSigContext,
 ) -> CallableType:
     """
     Transform positional arguments to keyword-only arguments.
@@ -63,6 +63,17 @@ class KeywordOnlyPlugin(Plugin):
         self,
         fullname: str,
     ) -> Callable[[FunctionSigContext], CallableType] | None:
+        """
+        Transform positional arguments to keyword-only arguments.
+        """
+        del self  # to satisfy vulture
+        del fullname  # to satisfy vulture
+        return _transform_function_signature
+
+    def get_method_signature_hook(
+        self,
+        fullname: str,
+    ) -> Callable[[MethodSigContext], CallableType] | None:
         """
         Transform positional arguments to keyword-only arguments.
         """
