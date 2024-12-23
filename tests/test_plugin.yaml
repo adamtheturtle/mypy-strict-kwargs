@@ -1,3 +1,4 @@
+---
 - case: positional_only
   main: |
     def func(a: int, /, b: str = "default") -> None: ...
