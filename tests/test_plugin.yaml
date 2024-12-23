@@ -40,4 +40,13 @@
 - case: positional_followed_by_var_positional
   main: |
     def func(a: int, *args: str) -> None: ...
-    func("extra")
+    func(1)
+
+- case: positional_followed_by_var_keyword
+  main: |
+    def func(a: int, **kwargs: str) -> None: ...
+    func(1)
+  out: |
+    main:2: error: Too many positional arguments for "func"  [misc]
+
+# TODO test classes, methods, classmethods
