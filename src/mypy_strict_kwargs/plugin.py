@@ -1,5 +1,5 @@
 """
-Mypy plugin to enforce strict keyword arguments.
+``mypy`` plugin to enforce strict keyword arguments.
 """
 
 from collections.abc import Callable
@@ -45,6 +45,7 @@ class KeywordOnlyPlugin(Plugin):
         """
         Transform positional arguments to keyword-only arguments.
         """
+        del self  # to satisfy vulture
         del fullname  # to satisfy vulture
         return _transform_function_signature
 

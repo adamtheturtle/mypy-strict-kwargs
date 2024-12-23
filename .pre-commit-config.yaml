@@ -191,7 +191,7 @@ repos:
 
       - id: pylint
         name: pylint
-        entry: uv run --extra=dev -m pylint *.py src/ tests/ docs/
+        entry: uv run --extra=dev -m pylint src/ tests/ docs/
         language: python
         stages: [manual]
         pass_filenames: false
