@@ -19,11 +19,14 @@ def _transform_function_signature(
     new_arg_kinds: list[ArgKind] = []
 
     for kind, name in zip(
-        original_sig.arg_kinds, original_sig.arg_names, strict=False
+        original_sig.arg_kinds,
+        original_sig.arg_names,
+        strict=True,
     ):
-        # If name is None, it's a positional-only argument; leave it as is
+        # If name is None, it is a positional-only argument; leave it as is
         if name is None:
             new_arg_kinds.append(kind)
+
         # Transform positional arguments that can also be keyword arguments
         elif kind == ArgKind.ARG_POS:
             new_arg_kinds.append(ArgKind.ARG_NAMED)
