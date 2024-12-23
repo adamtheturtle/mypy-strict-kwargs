@@ -13,10 +13,8 @@ ci:
     - deptry
     - doc8
     - docformatter
-    - docs
     - interrogate
     - interrogate-docs
-    - linkcheck
     - mypy
     - mypy-docs
     - pylint
@@ -32,7 +30,6 @@ ci:
     - shellcheck-docs
     - shfmt
     - shfmt-docs
-    - spelling
     - vulture
     - vulture-docs
     - yamlfix
@@ -190,7 +187,7 @@ repos:
 
       - id: pylint
         name: pylint
-        entry: uv run --extra=dev -m pylint src/ tests/ docs/
+        entry: uv run --extra=dev -m pylint src/ tests/
         language: python
         stages: [manual]
         pass_filenames: false
@@ -260,32 +257,6 @@ repos:
         language: python
         types_or: [toml]
         files: pyproject.toml
-        additional_dependencies: [uv==0.5.11]
-
-      - id: linkcheck
-        name: linkcheck
-        entry: make -C docs/ linkcheck SPHINXOPTS=-W
-        language: python
-        types_or: [rst]
-        stages: [manual]
-        pass_filenames: false
-        additional_dependencies: [uv==0.5.11]
-
-      - id: spelling
-        name: spelling
-        entry: make -C docs/ spelling SPHINXOPTS=-W
-        language: python
-        types_or: [rst]
-        stages: [manual]
-        pass_filenames: false
-        additional_dependencies: [uv==0.5.11]
-
-      - id: docs
-        name: Build Documentation
-        entry: make docs
-        language: python
-        stages: [manual]
-        pass_filenames: false
         additional_dependencies: [uv==0.5.11]
 
       # Skipped as mypy does not have good enough type hints for this to work.
