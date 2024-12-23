@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from mypy.nodes import ARG_NAMED, ARG_NAMED_OPT, ARG_OPT, ARG_POS, ArgKind
+from mypy.nodes import ARG_NAMED, ARG_NAMED_OPT, ARG_POS, ArgKind
 from mypy.plugin import FunctionSigContext, Plugin
 from mypy.types import CallableType
 
@@ -22,10 +22,8 @@ def _transform_function_signature(
         # Transform positional arguments that can also be keyword arguments
         elif kind == ARG_POS:
             new_arg_kinds.append(ARG_NAMED)
-        elif kind == ARG_OPT:
-            new_arg_kinds.append(ARG_NAMED_OPT)
         else:
-            new_arg_kinds.append(kind)
+            new_arg_kinds.append(ARG_NAMED_OPT)
 
     return original_sig.copy_modified(arg_kinds=new_arg_kinds)
 
