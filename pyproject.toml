@@ -183,6 +183,9 @@ load-plugins = [
 # Allow loading of arbitrary C extensions. Extensions are imported into the
 # active Python interpreter and may run arbitrary code.
 unsafe-load-any-extension = false
+extension-pkg-allow-list = [
+    "mypy",
+]
 
 [tool.pylint.'MESSAGES CONTROL']
 
@@ -370,6 +373,10 @@ ignore_path = [
 [tool.vulture]
 # Duplicate some of .gitignore
 exclude = [ ".venv" ]
+ignore_names = [
+    # mypy hook.
+    "get_function_signature_hook",
+]
 
 [tool.yamlfix]
 section_whitelines = 1
