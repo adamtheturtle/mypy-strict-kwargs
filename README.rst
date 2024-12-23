@@ -5,11 +5,19 @@ mypy-strict-kwargs
 
 Enforce using keyword arguments where possible.
 
+For example, if we have a function like this:
+
 .. code-block:: python
 
    def func(a: int, b: int) -> None: ...
 
-   func(1, 2)  # With this plugin, mypy will show an error here.
+then we can call it in multiple ways:
+
+.. code-block:: python
+
+   func(1, 2)
+   func(a=1, b=2)  # With this plugin, mypy will only accept this form
+   func(1, b=2)
 
 Installation
 ------------
