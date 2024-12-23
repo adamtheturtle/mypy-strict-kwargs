@@ -11,11 +11,13 @@ With this plugin, ``mypy`` will only accept the form where keyword arguments are
 
 .. code-block:: python
 
-   def func(a: int, b: int) -> None: ...
+   def add(a: int, b: int) -> int:
+       return a + b
 
-   func(a=1, b=2)  # With this plugin, mypy will only accept this form
-   func(1, 2)  # type: ignore[misc]
-   func(1, b=2)  # type: ignore[misc]
+
+   add(a=1, b=2)  # With this plugin, mypy will only accept this form
+   add(1, 2)  # type: ignore[misc]
+   add(1, b=2)  # type: ignore[misc]
 
 Installation
 ------------
