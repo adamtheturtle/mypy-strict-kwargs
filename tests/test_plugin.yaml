@@ -63,4 +63,8 @@
     def func(*args: str, a: int) -> None: ...
     func("a", a=1)
 
-# TODO test classes, methods, classmethods
+- case: class
+  main: |-
+    class C:
+        def __init__(self, a: int) -> None: ...
+    C(a=1)
