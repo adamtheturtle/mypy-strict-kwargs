@@ -50,4 +50,9 @@
   out: |
     main:2: error: Too many positional arguments for "func"  [misc]
 
+- case: var_positional_followed_by_keyword
+  main: |
+    def func(*args: str, a: int) -> None: ...
+    func("a", a=1)
+
 # TODO test classes, methods, classmethods
