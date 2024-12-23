@@ -18,10 +18,20 @@ def _transform_function_signature(
     original_sig: CallableType = ctx.default_signature
     new_arg_kinds: list[ArgKind] = []
 
-    for kind, name in zip(
-        original_sig.arg_kinds,
-        original_sig.arg_names,
-        strict=True,
+    star_arg_indices = [
+        index
+        for index, kind in enumerate(iterable=original_sig.arg_kinds)
+        if kind == ArgKind.ARG_STAR
+    ]
+
+    first_star_arg_index = star_arg_indices[0] if star_arg_indices else None
+
+    for index, (kind, name) in enumerate(
+        iterable=zip(
+            original_sig.arg_kinds,
+            original_sig.arg_names,
+            strict=True,
+        )
     ):
         # If name is None, it is a positional-only argument; leave it as is
         if name is None:
@@ -29,9 +39,17 @@ def _transform_function_signature(
 
         # Transform positional arguments that can also be keyword arguments
         elif kind == ArgKind.ARG_POS:
-            new_arg_kinds.append(ArgKind.ARG_NAMED)
+            if first_star_arg_index is None or index > first_star_arg_index:
+                new_arg_kinds.append(ArgKind.ARG_NAMED)
+            else:
+                new_arg_kinds.append(kind)
+        elif kind == ArgKind.ARG_OPT:
+            if first_star_arg_index is None or index > first_star_arg_index:
+                new_arg_kinds.append(ArgKind.ARG_NAMED_OPT)
+            else:
+                new_arg_kinds.append(kind)
         else:
-            new_arg_kinds.append(ArgKind.ARG_NAMED_OPT)
+            new_arg_kinds.append(kind)
 
     return original_sig.copy_modified(arg_kinds=new_arg_kinds)
 

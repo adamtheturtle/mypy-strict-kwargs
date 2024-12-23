@@ -6,7 +6,65 @@
 
 - case: positional
   main: |
-    def func(a: int, b: str = "default") -> None: ...
-    func(1, b="text")
-  out: |-
+    def func(a: int) -> None: ...
+    func(1)
+  out: |
     main:2: error: Too many positional arguments for "func"  [misc]
+
+- case: positional_optional
+  main: |
+    def func(a: int = 1) -> None: ...
+    func(1)
+    func()
+  out: |
+    main:2: error: Too many positional arguments for "func"  [misc]
+
+- case: keyword_only
+  main: |
+    def func(*, a: int) -> None: ...
+    func(a=1)
+
+- case: keyword_only_optional
+  main: |
+    def func(*, a: int = 1) -> None: ...
+    func(a=1)
+    func()
+
+- case: var_positional
+  main: |
+    def func(*args: str) -> None: ...
+    func("extra")
+
+- case: var_keyword
+  main: |
+    def func(**kwargs: str) -> None: ...
+    func(a="extra")
+
+- case: positional_followed_by_var_positional
+  main: |
+    def func(a: int, *args: str) -> None: ...
+    func(1)
+
+- case: positional_optional_followed_by_var_positional
+  main: |
+    def func(a: int = 1, *args: str) -> None: ...
+    func(1)
+    func()
+
+- case: positional_followed_by_var_keyword
+  main: |
+    def func(a: int, **kwargs: str) -> None: ...
+    func(1)
+  out: |
+    main:2: error: Too many positional arguments for "func"  [misc]
+
+- case: var_positional_followed_by_keyword
+  main: |
+    def func(*args: str, a: int) -> None: ...
+    func("a", a=1)
+
+- case: class
+  main: |-
+    class C:
+        def __init__(self, a: int) -> None: ...
+    C(a=1)
