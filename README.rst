@@ -30,9 +30,7 @@ Installation
 
    pip install mypy-strict-kwargs
 
-This is tested on Python |minimum-python-version|\+. Get in touch with
-``adamdangoor@gmail.com`` if you would like to use this with another
-language.
+This is tested on Python |minimum-python-version|\+.
 
 Configure ``mypy`` to use the plugin by adding the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/stable/config_file.html>`_.
 
