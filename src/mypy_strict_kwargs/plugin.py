@@ -29,11 +29,26 @@ def _transform_signature(
     first_star_arg_index = star_arg_indices[0] if star_arg_indices else None
 
     # Some methods get called with a positional argument that we do not supply.
-    suffixes = (
+    skip_first_argument_suffixes = (
         # Gets called when an instance of the class is called.
         ".__call__",
+        # Descriptor attribute access
+        ".__get__",
+        # Descriptor attribute assignment
+        ".__set__",
     )
-    skip_first_argument = fullname.endswith(suffixes)
+    skip_first_argument = fullname.endswith(skip_first_argument_suffixes)
+
+    skip_second_argument_suffixes = (
+        # Descriptor attribute access.
+        # The second argument is the instance of the class.
+        ".__get__",
+        # Descriptor attribute assignment.
+        # The second argument is the value to be assigned.
+        ".__set__",
+    )
+
+    skip_second_argument = fullname.endswith(skip_second_argument_suffixes)
 
     for index, (kind, name) in enumerate(
         iterable=zip(
@@ -43,6 +58,10 @@ def _transform_signature(
         )
     ):
         if skip_first_argument and index == 0:
+            new_arg_kinds.append(kind)
+            continue
+
+        if skip_second_argument and index == 1:
             new_arg_kinds.append(kind)
             continue
 
