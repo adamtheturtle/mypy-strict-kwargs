@@ -9,6 +9,11 @@ from mypy.plugin import FunctionSigContext, MethodSigContext, Plugin
 from mypy.types import CallableType
 
 
+def _skip_transform_signature(fullname: str) -> bool:
+    suffixes = (".__call__", ".__get__", ".__set__")
+    return fullname.endswith(suffixes)
+
+
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
 ) -> CallableType:
@@ -78,7 +83,8 @@ class KeywordOnlyPlugin(Plugin):
         Transform positional arguments to keyword-only arguments.
         """
         del self  # to satisfy vulture
-        del fullname  # to satisfy vulture
+        if _skip_transform_signature(fullname=fullname):
+            return None
         return _transform_signature
 
 

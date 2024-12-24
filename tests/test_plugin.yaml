@@ -74,7 +74,7 @@
   out: |-
     main:6: error: Too many positional arguments for "method" of "C"  [misc]
 
-- case: callable_class_decorator
+- case: callable_class_as_decorator
   main: |-
     from typing import Any
 
