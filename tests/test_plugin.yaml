@@ -98,3 +98,21 @@
     c(lambda: None, a=1)
   out: |-
     main:7: error: Too many positional arguments for "__call__" of "C"  [misc]
+
+- case: descriptor
+  main: |-
+    class D:
+      def __get__(self, o: object, ot: type | None = None) -> None:
+          return
+
+      def __set__(self, o: object, v: int) -> None:
+          return
+
+
+    class C:
+        a = D()
+
+
+    c = C()
+    c.a
+    c.a = 1
