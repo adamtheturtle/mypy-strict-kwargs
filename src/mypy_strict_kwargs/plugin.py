@@ -3,6 +3,7 @@
 """
 
 from collections.abc import Callable
+from functools import partial
 
 from mypy.nodes import ArgKind
 from mypy.plugin import FunctionSigContext, MethodSigContext, Plugin
@@ -22,6 +23,7 @@ def _skip_transform_signature(fullname: str) -> bool:
 
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
+    fullname: str,
 ) -> CallableType:
     """
     Transform positional arguments to keyword-only arguments.
@@ -37,6 +39,13 @@ def _transform_signature(
 
     first_star_arg_index = star_arg_indices[0] if star_arg_indices else None
 
+    # Some methods get called with a positional argument that we do not supply.
+    suffixes = (
+        # Gets called when an instance of the class is called.
+        ".__call__",
+    )
+    skip_first_argument = fullname.endswith(suffixes)
+
     for index, (kind, name) in enumerate(
         iterable=zip(
             original_sig.arg_kinds,
@@ -44,6 +53,10 @@ def _transform_signature(
             strict=True,
         )
     ):
+        if skip_first_argument and index == 0:
+            new_arg_kinds.append(kind)
+            continue
+
         # If name is None, it is a positional-only argument; leave it as is
         if name is None:
             new_arg_kinds.append(kind)
@@ -78,8 +91,7 @@ class KeywordOnlyPlugin(Plugin):
         Transform positional arguments to keyword-only arguments.
         """
         del self  # to satisfy vulture
-        del fullname  # to satisfy vulture
-        return _transform_signature
+        return partial(_transform_signature, fullname=fullname)
 
     def get_method_signature_hook(
         self,
@@ -89,9 +101,7 @@ class KeywordOnlyPlugin(Plugin):
         Transform positional arguments to keyword-only arguments.
         """
         del self  # to satisfy vulture
-        if _skip_transform_signature(fullname=fullname):
-            return None
-        return _transform_signature
+        return partial(_transform_signature, fullname=fullname)
 
 
 def plugin(version: str) -> type[KeywordOnlyPlugin]:

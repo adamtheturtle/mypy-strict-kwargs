@@ -95,4 +95,4 @@
     c = C()
     c(lambda: None, 1)
   out: |-
-    main:6: error: Too many positional arguments for "method" of "C"  [misc]
+    main:7: error: Too many positional arguments for "__call__" of "C"  [misc]
