@@ -73,3 +73,13 @@
     c.method(1)
   out: |-
     main:6: error: Too many positional arguments for "method" of "C"  [misc]
+
+- case: callable_class_decorator
+  main: |-
+    from typing import Any
+
+    class C:
+        def __call__(self, func: Any) -> None: ...
+
+    @C()
+    def func() -> None: ...
