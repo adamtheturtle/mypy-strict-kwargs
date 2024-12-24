@@ -10,7 +10,13 @@ from mypy.types import CallableType
 
 
 def _skip_transform_signature(fullname: str) -> bool:
-    suffixes = (".__call__",)
+    """
+    Some methods get called with positional arguments that we do not supply.
+    """
+    suffixes = (
+        # Gets called when an instance of the class is called.
+        ".__call__",
+    )
     return fullname.endswith(suffixes)
 
 
