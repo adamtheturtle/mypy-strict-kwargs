@@ -111,27 +111,17 @@ lint.select = [
     "ALL",
 ]
 lint.ignore = [
-    # We are happy to manage our own "complexity".
-    "C901",
     # Ruff warns that this conflicts with the formatter.
     "COM812",
     # Allow our chosen docstring line-style - no one-line summary.
     "D200",
     "D205",
     "D212",
-    "D415",
     # Ruff warns that this conflicts with the formatter.
     "ISC001",
     # Ignore "too-many-*" errors as they seem to get in the way more than
     # helping.
     "PLR0913",
-    # Allow 'assert' as we use it for tests.
-    "S101",
-]
-
-lint.per-file-ignores."tests/*.py" = [
-    # Do not require tests to have a one-line summary.
-    "D205",
 ]
 
 # Do not automatically remove commented out code.
@@ -236,6 +226,15 @@ disable = [
     # mypy does not want untyped parameters.
     'useless-type-doc',
 ]
+
+# This format is described in the following issue:
+# https://github.com/christopherpickering/pylint-per-file-ignores/issues/160
+#
+# We ignore invalid names because:
+# - We want to use generated module names, which may not be valid, but are never seen.
+per-file-ignores = """
+doccmd_README_rst.*.py:invalid-name
+"""
 
 [tool.pylint.'FORMAT']
 
