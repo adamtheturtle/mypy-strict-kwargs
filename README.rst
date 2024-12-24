@@ -32,7 +32,10 @@ Installation
 
 This is tested on Python |minimum-python-version|\+.
 
-Configure ``mypy`` to use the plugin by adding the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/stable/config_file.html>`_.
+Configure ``mypy`` to use the plugin
+------------------------------------
+
+Add the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/stable/config_file.html>`_:
 
 ``.ini`` files:
 
@@ -46,6 +49,7 @@ Configure ``mypy`` to use the plugin by adding the plugin to your `mypy configur
 .. code-block:: toml
 
    [tool.mypy]
+
    plugins = [
        "mypy_strict_kwargs",
    ]
