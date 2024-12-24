@@ -69,10 +69,11 @@
         def __init__(self) -> None: ...
 
         def method(self, a: int) -> None: ...
+
     c = C()
     c.method(1)
   out: |-
-    main:6: error: Too many positional arguments for "method" of "C"  [misc]
+    main:7: error: Too many positional arguments for "method" of "C"  [misc]
 
 - case: callable_class_as_decorator
   main: |-
@@ -83,3 +84,17 @@
 
     @C()
     def func() -> None: ...
+
+- case: callable_class_extra_params
+  main: |-
+    from typing import Any
+
+    class C:
+        def __call__(self, func: Any, a: int) -> None: ...
+
+    c = C()
+    c(lambda: None, 1)
+    c(func=lambda: None, a=1)
+    c(lambda: None, a=1)
+  out: |-
+    main:7: error: Too many positional arguments for "__call__" of "C"  [misc]
