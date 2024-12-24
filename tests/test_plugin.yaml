@@ -108,10 +108,8 @@
       def __set__(self, o: object, v: int) -> None:
           return
 
-
     class C:
         a = D()
-
 
     c = C()
     c.a
