@@ -10,7 +10,7 @@ from mypy.types import CallableType
 
 
 def _skip_transform_signature(fullname: str) -> bool:
-    suffixes = (".__call__", ".__get__", ".__set__")
+    suffixes = (".__call__",)
     return fullname.endswith(suffixes)
 
 
