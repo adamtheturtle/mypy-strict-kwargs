@@ -30,6 +30,8 @@ jobs:
           # See
           # https://github.com/stefanzweifel/git-auto-commit-action?tab=readme-ov-file#push-to-protected-branches
           token: ${{ secrets.RELEASE_PAT }}
+          # Avoids https://github.com/stefanzweifel/git-auto-commit-action/issues/99.
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
