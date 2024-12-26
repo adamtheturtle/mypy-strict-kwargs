@@ -155,6 +155,17 @@ repos:
         types_or: [markdown, rst]
         additional_dependencies: [uv==0.5.11]
 
+      - id: pyright-verifytypes
+        name: pyright-verifytypes
+        stages: [pre-push]
+        # Use `--ignoreexternal` because we expose parts of the mypy API and mypy is not
+        # thoroughly typed enough.
+        entry: uv run --extra=dev -m pyright --ignoreexternal --verifytypes mypy_strict_kwargs
+        language: python
+        pass_filenames: false
+        types_or: [python]
+        additional_dependencies: [uv==0.4.25]
+
       - id: vulture
         name: vulture
         entry: uv run --extra=dev -m vulture .
@@ -258,17 +269,6 @@ repos:
         types_or: [toml]
         files: pyproject.toml
         additional_dependencies: [uv==0.5.11]
-
-      # Skipped as mypy does not have good enough type hints for this to work.
-      #
-      # - id: pyright-verifytypes
-      #   name: pyright-verifytypes
-      #   stages: [pre-push]
-      #   entry: uv run --extra=dev -m pyright --verifytypes mypy_strict_kwargs
-      #   language: python
-      #   pass_filenames: false
-      #   types_or: [python]
-      #   additional_dependencies: [uv==0.5.11]
 
       - id: yamlfix
         name: yamlfix
