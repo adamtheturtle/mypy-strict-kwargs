@@ -4,7 +4,6 @@ mypy-strict-kwargs
 ==================
 
 Enforce using keyword arguments where possible.
-In the same spirit as a formatter - think ``black`` or ``ruff format`` - this lets you stop spending time discussing whether a particular function call should use keyword arguments.
 
 For example, if we have a function which takes two regular argument, there are three ways to call it.
 With this plugin, ``mypy`` will only accept the form where keyword arguments are used.
@@ -22,6 +21,16 @@ With this plugin, ``mypy`` will only accept the form where keyword arguments are
    add(a=1, b=2)  # With this plugin, ``mypy`` will only accept this form
    add(1, 2)  # type: ignore[misc]
    add(1, b=2)  # type: ignore[misc]
+
+Why?
+----
+
+* In the same spirit as a formatter - think ``black`` or ``ruff format`` - this lets you stop spending time discussing whether a particular function call should use keyword arguments.
+* Sometimes positional arguments are best at first, and then more and more are added and code becomes unclear, without anyone stopping to refactor to keyword arguments.
+* The type checker gives better errors when keyword arguments are used.
+  For example, with positional arguments, you may see, ``Argument 5 to "add" has incompatible type "str"; expected "int"``.
+  This requires that you count the arguments to see which one is wrong.
+  With named arguments, you get ``Argument "e" to "add" has incompatible type "str"; expected "int"``.
 
 Installation
 ------------
