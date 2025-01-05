@@ -30,6 +30,7 @@ ci:
     - shellcheck-docs
     - shfmt
     - shfmt-docs
+    - sphinx-lint
     - vulture
     - vulture-docs
     - yamlfix
@@ -276,3 +277,10 @@ repos:
         language: python
         types_or: [yaml]
         additional_dependencies: [uv==0.5.11]
+
+      - id: sphinx-lint
+        name: sphinx-lint
+        entry: uv run --extra=dev sphinx-lint --enable=all --disable=line-too-long *.rst
+        language: python
+        types_or: [rst]
+        additional_dependencies: [uv==0.5.14]
