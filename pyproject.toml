@@ -46,6 +46,9 @@ optional-dependencies.dev = [
     "freezegun==1.5.1",
     "interrogate==1.7.0",
     "mypy[faster-cache]==1.14.1",
+    # Dependency of mypy[faster-cache].
+    # Versioned here to work around https://github.com/ijl/orjson/issues/548
+    "orjson==3.10.14",
     "pre-commit==4.0.1",
     "pyenchant==3.3.0rc1",
     "pylint==3.3.3",
