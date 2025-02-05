@@ -45,7 +45,7 @@ optional-dependencies.dev = [
     "docformatter==1.7.5",
     "freezegun==1.5.1",
     "interrogate==1.7.0",
-    "mypy[faster-cache]==1.14.1",
+    "mypy[faster-cache]==1.15.0",
     "pre-commit==4.1.0",
     "pyenchant==3.3.0rc1",
     "pylint==3.3.4",
