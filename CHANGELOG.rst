@@ -4,6 +4,8 @@ Changelog
 Next
 ----
 
+* Drop support for Python 3.10.
+
 2024.12.25
 ----------
 
