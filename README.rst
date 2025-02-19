@@ -69,4 +69,4 @@ Add the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/
    :target: https://codecov.io/gh/adamtheturtle/mypy-strict-kwargs
 .. |PyPI| image:: https://badge.fury.io/py/mypy-strict-kwargs.svg
    :target: https://badge.fury.io/py/mypy-strict-kwargs
-.. |minimum-python-version| replace:: 3.10
+.. |minimum-python-version| replace:: 3.11
