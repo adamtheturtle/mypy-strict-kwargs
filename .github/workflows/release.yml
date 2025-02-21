@@ -37,7 +37,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          cache-dependency-glob: "**/pyproject.toml"
+          cache-dependency-glob: '**/pyproject.toml'
 
       - name: Calver calculate version
         uses: StephaneBour/actions-calver@master
