@@ -62,6 +62,7 @@ optional-dependencies.dev = [
     "shellcheck-py==0.10.0.1",
     "shfmt-py==3.7.0.1",
     "sphinx-lint==1.0.0",
+    "sphinx-pyproject==0.3.0",
     "vulture==2.14",
     "yamlfix==1.17.0",
 ]
