@@ -42,7 +42,6 @@ optional-dependencies.dev = [
     "doc8==1.1.2",
     "doccmd==2025.2.20.3",
     "docformatter==1.7.5",
-    "freezegun==1.5.1",
     "interrogate==1.7.0",
     "mypy[faster-cache]==1.15.0",
     "pre-commit==4.1.0",
