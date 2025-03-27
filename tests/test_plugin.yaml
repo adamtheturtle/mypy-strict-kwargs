@@ -24,7 +24,7 @@
             "mypy.plugins.proper_plugin",
         ]
         follow_untyped_imports = true
-      
+
         [tool.mypy_strict_kwargs]
         ignore_builtins = true
   main: |

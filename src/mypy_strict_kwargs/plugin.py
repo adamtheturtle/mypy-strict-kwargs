@@ -30,6 +30,8 @@ def _parse_toml(config_file: Path) -> dict[str, Any] | None:
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
+    *,
+    ignore_builtins: bool,
 ) -> CallableType:
     """
     Transform positional arguments to keyword-only arguments.
@@ -83,7 +85,9 @@ def _transform_signature(
             continue
 
         # If name is None, it is a positional-only argument; leave it as is
-        if name is None or name in __import__(name="builtins").__dict__:
+        is_positional_only = name is None
+        should_ignore = ignore_builtins and fullname.startswith("builtins.")
+        if is_positional_only or should_ignore:
             new_arg_kinds.append(kind)
 
         # Transform positional arguments that can also be keyword arguments
@@ -121,7 +125,6 @@ class _KeywordOnlyPluginConfig:
         if toml_config is not None:
             config = toml_config.get("tool", {})
             config = config.get("mypy_strict_kwargs", {})
-            breakpoint()
             for key in self.__slots__:
                 setting = config.get(key, False)
                 if not isinstance(setting, bool):
@@ -143,6 +146,7 @@ class _KeywordOnlyPluginConfig:
 
     def to_data(self) -> dict[str, Any]:
         """Returns a dict of config names to their values."""
+        print(str(1))
         return {key: getattr(self, key) for key in self.__slots__}
 
 
@@ -158,7 +162,6 @@ class KeywordOnlyPlugin(Plugin):
             return
         self._plugin_config = _KeywordOnlyPluginConfig(options=options)
         self._plugin_data = self._plugin_config.to_data()
-        breakpoint()
 
     def get_function_signature_hook(
         self,
@@ -167,8 +170,11 @@ class KeywordOnlyPlugin(Plugin):
         """
         Transform positional arguments to keyword-only arguments.
         """
-        del self  # to satisfy vulture
-        return partial(_transform_signature, fullname=fullname)
+        return partial(
+            _transform_signature,
+            fullname=fullname,
+            ignore_builtins=self._plugin_data["ignore_builtins"],
+        )
 
     def get_method_signature_hook(
         self,
@@ -177,8 +183,11 @@ class KeywordOnlyPlugin(Plugin):
         """
         Transform positional arguments to keyword-only arguments.
         """
-        del self  # to satisfy vulture
-        return partial(_transform_signature, fullname=fullname)
+        return partial(
+            _transform_signature,
+            fullname=fullname,
+            ignore_builtins=self._plugin_data["ignore_builtins"],
+        )
 
 
 def plugin(version: str) -> type[KeywordOnlyPlugin]:
