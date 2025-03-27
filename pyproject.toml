@@ -84,6 +84,9 @@ mypy_strict_kwargs = [
     "py.typed",
 ]
 
+[tool.mypy_strict_kwargs]
+ignore_builtins = true
+
 [tool.distutils.bdist_wheel]
 universal = true
 
