@@ -145,7 +145,9 @@ class _KeywordOnlyPluginConfig:
                 setattr(self, key, setting)
 
     def to_data(self) -> dict[str, Any]:
-        """Returns a dict of config names to their values."""
+        """
+        Returns a dict of config names to their values.
+        """
         print(str(1))
         return {key: getattr(self, key) for key in self.__slots__}
 
@@ -156,7 +158,9 @@ class KeywordOnlyPlugin(Plugin):
     """
 
     def __init__(self, options: Options) -> None:
-        """Configure the plugin."""
+        """
+        Configure the plugin.
+        """
         super().__init__(options=options)
         if options.config_file is None:  # pragma: no cover
             return
