@@ -2,6 +2,7 @@
 ``mypy`` plugin to enforce strict keyword arguments.
 """
 
+import sys
 import tomllib
 from collections.abc import Callable
 from functools import partial
@@ -18,10 +19,14 @@ def _transform_signature(
     fullname: str,
     *,
     ignore_names: list[str],
+    debug: bool,
 ) -> CallableType:
     """
     Transform positional arguments to keyword-only arguments.
     """
+    if debug:
+        sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
+
     original_sig: CallableType = ctx.default_signature
     new_arg_kinds: list[ArgKind] = []
 
@@ -118,6 +123,7 @@ class KeywordOnlyPlugin(Plugin):
         tools = dict(config_dictionary.get("tool", {}))
         plugin_config = dict(tools.get("mypy_strict_kwargs", {}))
         self._ignore_names = list(plugin_config.get("ignore_names", []))
+        self._debug = bool(plugin_config.get("debug", False))
 
     def get_function_signature_hook(
         self,
@@ -130,6 +136,7 @@ class KeywordOnlyPlugin(Plugin):
             _transform_signature,
             fullname=fullname,
             ignore_names=self._ignore_names,
+            debug=self._debug,
         )
 
     def get_method_signature_hook(
@@ -143,6 +150,7 @@ class KeywordOnlyPlugin(Plugin):
             _transform_signature,
             fullname=fullname,
             ignore_names=self._ignore_names,
+            debug=self._debug,
         )
 
 

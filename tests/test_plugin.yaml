@@ -120,11 +120,32 @@
     - path: pyproject.toml
       content: |
         [tool.mypy]
-        plugins = [
-            "mypy_strict_kwargs",
-        ]
+        plugins = ["mypy_strict_kwargs"]
+
         [tool.mypy_strict_kwargs]
         ignore_names = ["main.func", "builtins.str"]
+  main: |-
+    def func(a: int) -> None: ...
+    func(1)
+
+    def not_ignored(a: int) -> None: ...
+    not_ignored(1)
+
+    str(1)
+  out: |-
+    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+
+- case: debug
+  files:
+    - path: pyproject.toml
+      content: |
+        [tool.mypy]
+        plugins = ["mypy_strict_kwargs"]
+
+        [tool.mypy_strict_kwargs]
+        ignore_names = ["main.func", "builtins.str"]
+        # We do this for coverage, but we do not actually see the output.
+        debug = true
   main: |-
     def func(a: int) -> None: ...
     func(1)
