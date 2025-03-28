@@ -136,3 +136,5 @@
     c = C()
     c.a
     c.a = 1
+
+- case: builtin

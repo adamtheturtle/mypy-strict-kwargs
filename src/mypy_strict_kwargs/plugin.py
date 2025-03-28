@@ -17,7 +17,7 @@ def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
     *,
-    ignore_builtins: bool,
+    ignore_names: list[str],
 ) -> CallableType:
     """
     Transform positional arguments to keyword-only arguments.
@@ -72,7 +72,7 @@ def _transform_signature(
 
         # If name is None, it is a positional-only argument; leave it as is
         is_positional_only = name is None
-        should_ignore = ignore_builtins and fullname.startswith("builtins.")
+        should_ignore = fullname in ignore_names
         if is_positional_only or should_ignore:
             new_arg_kinds.append(kind)
 
@@ -116,7 +116,7 @@ class KeywordOnlyPlugin(Plugin):
 
         tools = dict(config_dictionary.get("tool", {}))
         plugin_config = dict(tools.get("mypy_strict_kwargs", {}))
-        self._ignore_builtins = plugin_config.get("ignore_builtins", False)
+        self._ignore_names = list(plugin_config.get("ignore_names", []))
 
     def get_function_signature_hook(
         self,
@@ -128,7 +128,7 @@ class KeywordOnlyPlugin(Plugin):
         return partial(
             _transform_signature,
             fullname=fullname,
-            ignore_builtins=self._ignore_builtins,
+            ignore_names=self._ignore_names,
         )
 
     def get_method_signature_hook(
@@ -141,7 +141,7 @@ class KeywordOnlyPlugin(Plugin):
         return partial(
             _transform_signature,
             fullname=fullname,
-            ignore_builtins=self._ignore_builtins,
+            ignore_names=self._ignore_names,
         )
 
 
