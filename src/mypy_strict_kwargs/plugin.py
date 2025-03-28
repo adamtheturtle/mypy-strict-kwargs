@@ -99,8 +99,7 @@ class KeywordOnlyPlugin(Plugin):
     """
 
     def __init__(self, options: Options) -> None:
-        """
-        Configure the plugin.
+        """Configure the plugin.
 
         This is not friendly to errors yet.
         """
