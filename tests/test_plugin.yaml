@@ -1,32 +1,10 @@
 ---
 - case: positional_only
-  files:
-    - path: pyproject.toml
-      content: |
-        foo = true
   main: |
     def func(a: int, /, b: str = "default") -> None: ...
     func(1)
 
 - case: positional
-  files:
-    - path: pyproject.toml
-      content: |
-        [tool.mypy]
-
-        strict = true
-        files = [ "." ]
-        exclude = [ "build" ]
-        plugins = [
-            "mypy_strict_kwargs",
-            # See
-            # https://mypy.readthedocs.io/en/latest/extending_mypy.html#useful-tools.
-            "mypy.plugins.proper_plugin",
-        ]
-        follow_untyped_imports = true
-
-        [tool.mypy_strict_kwargs]
-        ignore_builtins = true
   main: |
     def func(a: int) -> None: ...
     func(1)
@@ -137,4 +115,23 @@
     c.a
     c.a = 1
 
-- case: builtin
+- case: ignore_name
+  files:
+    - path: pyproject.toml
+      content: |
+        [tool.mypy]
+        plugins = [
+            "mypy_strict_kwargs",
+        ]
+        [tool.mypy_strict_kwargs]
+        ignore_names = ["main.func", "builtins.str"]
+  main: |-
+    def func(a: int) -> None: ...
+    func(1)
+
+    def not_ignored(a: int) -> None: ...
+    not_ignored(1)
+
+    str(1)
+  out: |-
+    main:5: error: Too many positional arguments for "not_ignored"  [misc]
