@@ -135,6 +135,8 @@
   out: |-
     main:5: error: Too many positional arguments for "not_ignored"  [misc]
 
+# This does not actually test the debug option, but it gives
+# us coverage at least.
 - case: debug
   files:
     - path: pyproject.toml
@@ -144,7 +146,6 @@
 
         [tool.mypy_strict_kwargs]
         ignore_names = ["main.func", "builtins.str"]
-            # We do this for coverage, but we do not actually see the output.
         debug = true
   main: |-
     def func(a: int) -> None: ...
