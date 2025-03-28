@@ -101,13 +101,15 @@ class KeywordOnlyPlugin(Plugin):
     def __init__(self, options: Options) -> None:
         """
         Configure the plugin.
+
+        This is not friendly to errors yet.
         """
         super().__init__(options=options)
         if options.config_file is None:  # pragma: no cover
             return
 
         config_file = Path(options.config_file)
-        if config_file.suffix != ".toml":
+        if config_file.suffix != ".toml":  # pragma: no cover
             # We do not currently support `.ini` files.
             return
 
