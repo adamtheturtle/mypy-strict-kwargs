@@ -99,7 +99,9 @@ class KeywordOnlyPlugin(Plugin):
     """
 
     def __init__(self, options: Options) -> None:
-        """Configure the plugin."""
+        """
+        Configure the plugin.
+        """
         super().__init__(options=options)
         if options.config_file is None:  # pragma: no cover
             return
