@@ -144,7 +144,7 @@
 
         [tool.mypy_strict_kwargs]
         ignore_names = ["main.func", "builtins.str"]
-        # We do this for coverage, but we do not actually see the output.
+          # We do this for coverage, but we do not actually see the output.
         debug = true
   main: |-
     def func(a: int) -> None: ...
