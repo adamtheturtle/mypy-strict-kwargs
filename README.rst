@@ -63,6 +63,28 @@ Add the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/
        "mypy_strict_kwargs",
    ]
 
+Ignoring functions
+------------------
+
+You can ignore functions by adding configuration to ``pyproject.toml``.
+
+.. code-block:: toml
+
+   [tool.mypy_strict_kwargs]
+   ignore_names = ["main.func", "builtins.str"]
+
+This is useful especially for builtins which can look strange with keyword arguments.
+For example, ``str(object=1)`` is not idiomatic.
+
+To find the name of a function to ignore, set the following configuration:
+
+.. code-block:: toml
+
+   [tool.mypy_strict_kwargs]
+   debug = true
+
+Then run ``mypy`` and look for the debug output.
+
 .. |Build Status| image:: https://github.com/adamtheturtle/mypy-strict-kwargs/actions/workflows/ci.yml/badge.svg?branch=main
    :target: https://github.com/adamtheturtle/mypy-strict-kwargs/actions
 .. |codecov| image:: https://codecov.io/gh/adamtheturtle/mypy-strict-kwargs/branch/main/graph/badge.svg

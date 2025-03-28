@@ -114,3 +114,46 @@
     c = C()
     c.a
     c.a = 1
+
+- case: ignore_name
+  files:
+    - path: pyproject.toml
+      content: |
+        [tool.mypy]
+        plugins = ["mypy_strict_kwargs"]
+
+        [tool.mypy_strict_kwargs]
+        ignore_names = ["main.func", "builtins.str"]
+  main: |-
+    def func(a: int) -> None: ...
+    func(1)
+
+    def not_ignored(a: int) -> None: ...
+    not_ignored(1)
+
+    str(1)
+  out: |-
+    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+
+# This does not actually test the debug option, but it gives
+# us coverage at least.
+- case: debug
+  files:
+    - path: pyproject.toml
+      content: |
+        [tool.mypy]
+        plugins = ["mypy_strict_kwargs"]
+
+        [tool.mypy_strict_kwargs]
+        ignore_names = ["main.func", "builtins.str"]
+        debug = true
+  main: |-
+    def func(a: int) -> None: ...
+    func(1)
+
+    def not_ignored(a: int) -> None: ...
+    not_ignored(1)
+
+    str(1)
+  out: |-
+    main:5: error: Too many positional arguments for "not_ignored"  [misc]

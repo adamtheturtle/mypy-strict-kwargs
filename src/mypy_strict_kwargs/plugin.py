@@ -2,10 +2,14 @@
 ``mypy`` plugin to enforce strict keyword arguments.
 """
 
+import sys
+import tomllib
 from collections.abc import Callable
 from functools import partial
+from pathlib import Path
 
 from mypy.nodes import ArgKind
+from mypy.options import Options
 from mypy.plugin import FunctionSigContext, MethodSigContext, Plugin
 from mypy.types import CallableType
 
@@ -13,10 +17,16 @@ from mypy.types import CallableType
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
+    *,
+    ignore_names: list[str],
+    debug: bool,
 ) -> CallableType:
     """
     Transform positional arguments to keyword-only arguments.
     """
+    if debug:
+        sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
+
     original_sig: CallableType = ctx.default_signature
     new_arg_kinds: list[ArgKind] = []
 
@@ -66,7 +76,9 @@ def _transform_signature(
             continue
 
         # If name is None, it is a positional-only argument; leave it as is
-        if name is None:
+        is_positional_only = name is None
+        should_ignore = fullname in ignore_names
+        if is_positional_only or should_ignore:
             new_arg_kinds.append(kind)
 
         # Transform positional arguments that can also be keyword arguments
@@ -91,6 +103,28 @@ class KeywordOnlyPlugin(Plugin):
     A plugin that transforms positional arguments to keyword-only arguments.
     """
 
+    def __init__(self, options: Options) -> None:
+        """Configure the plugin.
+
+        This is not friendly to errors yet.
+        """
+        super().__init__(options=options)
+        if options.config_file is None:  # pragma: no cover
+            return
+
+        config_file = Path(options.config_file)
+        if config_file.suffix != ".toml":  # pragma: no cover
+            # We do not currently support `.ini` files.
+            return
+
+        with config_file.open(mode="rb") as rf:
+            config_dictionary = tomllib.load(rf)
+
+        tools = dict(config_dictionary.get("tool", {}))
+        plugin_config = dict(tools.get("mypy_strict_kwargs", {}))
+        self._ignore_names = list(plugin_config.get("ignore_names", []))
+        self._debug = bool(plugin_config.get("debug", False))
+
     def get_function_signature_hook(
         self,
         fullname: str,
@@ -98,8 +132,12 @@ class KeywordOnlyPlugin(Plugin):
         """
         Transform positional arguments to keyword-only arguments.
         """
-        del self  # to satisfy vulture
-        return partial(_transform_signature, fullname=fullname)
+        return partial(
+            _transform_signature,
+            fullname=fullname,
+            ignore_names=self._ignore_names,
+            debug=self._debug,
+        )
 
     def get_method_signature_hook(
         self,
@@ -108,8 +146,12 @@ class KeywordOnlyPlugin(Plugin):
         """
         Transform positional arguments to keyword-only arguments.
         """
-        del self  # to satisfy vulture
-        return partial(_transform_signature, fullname=fullname)
+        return partial(
+            _transform_signature,
+            fullname=fullname,
+            ignore_names=self._ignore_names,
+            debug=self._debug,
+        )
 
 
 def plugin(version: str) -> type[KeywordOnlyPlugin]:
