@@ -91,4 +91,4 @@ Then run ``mypy`` and look for the debug output.
    :target: https://codecov.io/gh/adamtheturtle/mypy-strict-kwargs
 .. |PyPI| image:: https://badge.fury.io/py/mypy-strict-kwargs.svg
    :target: https://badge.fury.io/py/mypy-strict-kwargs
-.. |minimum-python-version| replace:: 3.11
+.. |minimum-python-version| replace:: 3.10
