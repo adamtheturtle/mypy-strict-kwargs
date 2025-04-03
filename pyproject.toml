@@ -17,7 +17,7 @@ license = { file = "LICENSE" }
 authors = [
     { name = "Adam Dangoor", email = "adamdangoor@gmail.com" },
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",
@@ -25,6 +25,7 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -34,13 +35,16 @@ dynamic = [
 ]
 dependencies = [
     "mypy>=1.13.0",
+    # We can switch to tomllib from the standard library in Python 3.11+.
+    # Working with conditional imports in Python 3.11+ is too difficult.
+    "tomli>=1.2.2",
 ]
 optional-dependencies.dev = [
     "actionlint-py==1.7.7.23",
     "check-manifest==0.50",
     "deptry==0.23.0",
     "doc8==1.1.2",
-    "doccmd==2025.3.27",
+    "doccmd==2025.2.18",
     "docformatter==1.7.5",
     "interrogate==1.7.0",
     "mypy[faster-cache]==1.15.0",
@@ -62,6 +66,7 @@ optional-dependencies.dev = [
     "shellcheck-py==0.10.0.1",
     "shfmt-py==3.11.0.2",
     "sphinx-lint==1.0.0",
+    "tomli==2.2.1",
     "vulture==2.14",
     "yamlfix==1.17.0",
 ]

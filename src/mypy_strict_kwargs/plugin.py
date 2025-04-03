@@ -3,11 +3,11 @@
 """
 
 import sys
-import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
+import tomli as tomllib
 from mypy.nodes import ArgKind
 from mypy.options import Options
 from mypy.plugin import FunctionSigContext, MethodSigContext, Plugin

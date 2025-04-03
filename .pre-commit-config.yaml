@@ -194,6 +194,7 @@ repos:
         entry: uv run --extra=dev -m deptry src/
         language: python
         pass_filenames: false
+        types_or: [toml]
         additional_dependencies: [uv==0.6.3]
 
       - id: pylint
