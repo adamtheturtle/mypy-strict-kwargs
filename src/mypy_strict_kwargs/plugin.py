@@ -3,7 +3,6 @@
 """
 
 import sys
-import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -12,6 +11,11 @@ from mypy.nodes import ArgKind
 from mypy.options import Options
 from mypy.plugin import FunctionSigContext, MethodSigContext, Plugin
 from mypy.types import CallableType
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover
+    import tomli as tomllib  # type: ignore[no-redef]
 
 
 def _transform_signature(
