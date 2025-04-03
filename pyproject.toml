@@ -35,7 +35,9 @@ dynamic = [
 ]
 dependencies = [
     "mypy>=1.13.0",
-    "tomli>=1.2.2; python_version<'3.11'",
+    # We can switch to tomllib from the standard library in Python 3.11+.
+    # Working with conditional imports in Python 3.11+ is too difficult.
+    "tomli>=1.2.2",
 ]
 optional-dependencies.dev = [
     "actionlint-py==1.7.7.23",
@@ -281,12 +283,6 @@ ignore = [
 pep621_dev_dependency_groups = [
     "dev",
     "release",
-]
-
-[tool.deptry.per_rule_ignores]
-DEP001 = [
-    # Part of the standard library in 3.11+.
-    "tomllib",
 ]
 
 [tool.pyproject-fmt]
