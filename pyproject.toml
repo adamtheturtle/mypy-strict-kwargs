@@ -64,6 +64,7 @@ optional-dependencies.dev = [
     "shellcheck-py==0.10.0.1",
     "shfmt-py==3.11.0.2",
     "sphinx-lint==1.0.0",
+    "tomli==2.2.1",
     "vulture==2.14",
     "yamlfix==1.17.0",
 ]
