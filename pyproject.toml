@@ -69,7 +69,7 @@ optional-dependencies.dev = [
     "vulture==2.14",
     "yamlfix==1.17.0",
 ]
-optional-dependencies.release = [ "check-wheel-contents==0.6.2" ]
+optional-dependencies.release = [ "check-wheel-contents==0.6.3" ]
 urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
 urls.Source = "https://github.com/adamtheturtle/mypy-strict-kwargs"
 
