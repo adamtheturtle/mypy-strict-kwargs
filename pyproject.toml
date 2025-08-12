@@ -49,7 +49,7 @@ optional-dependencies.dev = [
     "mypy[faster-cache]==1.17.1",
     "pre-commit==4.2.0",
     "pyenchant==3.3.0rc1",
-    "pylint==3.3.7",
+    "pylint==3.3.8",
     "pylint-per-file-ignores==1.4.0",
     "pyproject-fmt==2.6.0",
     "pyright==1.1.403",
@@ -62,7 +62,7 @@ optional-dependencies.dev = [
     # We add shellcheck-py not only for shell scripts and shell code blocks,
     # but also because having it installed means that ``actionlint-py`` will
     # use it to lint shell commands in GitHub workflow files.
-    "shellcheck-py==0.10.0.1",
+    "shellcheck-py==0.11.0.1",
     "shfmt-py==3.12.0.2",
     "sphinx-lint==1.0.0",
     "tomli==2.2.1",
