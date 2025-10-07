@@ -1,4 +1,4 @@
-|Build Status| |codecov| |PyPI|
+|Build Status| |PyPI|
 
 mypy-strict-kwargs
 ==================
@@ -87,8 +87,6 @@ Then run ``mypy`` and look for the debug output.
 
 .. |Build Status| image:: https://github.com/adamtheturtle/mypy-strict-kwargs/actions/workflows/ci.yml/badge.svg?branch=main
    :target: https://github.com/adamtheturtle/mypy-strict-kwargs/actions
-.. |codecov| image:: https://codecov.io/gh/adamtheturtle/mypy-strict-kwargs/branch/main/graph/badge.svg
-   :target: https://codecov.io/gh/adamtheturtle/mypy-strict-kwargs
 .. |PyPI| image:: https://badge.fury.io/py/mypy-strict-kwargs.svg
    :target: https://badge.fury.io/py/mypy-strict-kwargs
 .. |minimum-python-version| replace:: 3.10
