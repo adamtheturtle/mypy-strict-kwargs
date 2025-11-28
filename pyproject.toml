@@ -46,7 +46,7 @@ optional-dependencies.dev = [
     "doccmd==2025.11.20",
     "docformatter==1.7.7",
     "interrogate==1.7.0",
-    "mypy[faster-cache]==1.18.2",
+    "mypy[faster-cache]==1.19.0",
     "pre-commit==4.5.0",
     "pylint[spelling]==4.0.3",
     "pylint-per-file-ignores==3.2.0",
