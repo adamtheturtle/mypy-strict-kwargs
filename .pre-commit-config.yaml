@@ -18,9 +18,11 @@ ci:
     - mypy
     - mypy-docs
     - pylint
+    - pylint-docs
     - pyproject-fmt-fix
     - pyright
     - pyright-docs
+    - pyright-verifytypes
     - pyroma
     - ruff-check-fix
     - ruff-check-fix-docs
@@ -31,6 +33,8 @@ ci:
     - shfmt
     - shfmt-docs
     - sphinx-lint
+    - ty
+    - ty-docs
     - vulture
     - vulture-docs
     - yamlfix
@@ -166,6 +170,24 @@ repos:
         language: python
         pass_filenames: false
         types_or: [python]
+        additional_dependencies: [uv==0.9.5]
+
+      - id: ty
+        name: ty
+        stages: [pre-push]
+        entry: uv run --extra=dev ty check
+        language: python
+        types_or: [python, toml]
+        pass_filenames: false
+        additional_dependencies: [uv==0.9.5]
+
+      - id: ty-docs
+        name: ty-docs
+        stages: [pre-push]
+        entry: uv run --extra=dev doccmd --no-write-to-file --example-workers 0 --language=python
+          --command="ty check"
+        language: python
+        types_or: [markdown, rst]
         additional_dependencies: [uv==0.9.5]
 
       - id: vulture
