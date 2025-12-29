@@ -68,6 +68,7 @@ optional-dependencies.dev = [
     "ty==0.0.7",
     "vulture==2.14",
     "yamlfix==1.19.1",
+    "zizmor==1.19.0",
 ]
 optional-dependencies.release = [ "check-wheel-contents==0.6.3" ]
 urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
@@ -276,6 +277,7 @@ ignore = [
     "tests-pylintrc",
     "tests/**",
     "lint.mk",
+    "zizmor.yml",
 ]
 
 [tool.deptry]
