@@ -95,7 +95,10 @@ def _transform_signature(
         else:
             new_arg_kinds.append(kind)
 
-    return original_sig.copy_modified(arg_kinds=new_arg_kinds)
+    # See https://github.com/facebook/pyrefly/issues/1995.
+    return original_sig.copy_modified(
+        arg_kinds=new_arg_kinds,  # pyrefly: ignore[bad-argument-type]
+    )
 
 
 class KeywordOnlyPlugin(Plugin):
