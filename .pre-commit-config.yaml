@@ -40,8 +40,9 @@ ci:
     - vulture
     - vulture-docs
     - yamlfix
+    - zizmor
 
-default_install_hook_types: [pre-commit, pre-push, commit-msg]
+default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   - repo: meta
@@ -322,6 +323,14 @@ repos:
         name: yamlfix
         entry: uv run --extra=dev yamlfix
         language: python
+        types_or: [yaml]
+        additional_dependencies: [uv==0.9.5]
+
+      - id: zizmor
+        name: zizmor
+        entry: uv run --extra=dev zizmor --strict-collection .github
+        language: python
+        pass_filenames: false
         types_or: [yaml]
         additional_dependencies: [uv==0.9.5]
 

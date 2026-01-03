@@ -39,7 +39,7 @@ dependencies = [
     "tomli>=1.2.2",
 ]
 optional-dependencies.dev = [
-    "actionlint-py==1.7.9.24",
+    "actionlint-py==1.7.10.24",
     "check-manifest==0.51",
     "deptry==0.24.0",
     "doc8==2.0.0",
@@ -47,7 +47,7 @@ optional-dependencies.dev = [
     "docformatter==1.7.7",
     "interrogate==1.7.0",
     "mypy[faster-cache]==1.19.1",
-    "pre-commit==4.5.1",
+    "prek==0.2.25",
     "pylint[spelling]==4.0.4",
     "pylint-per-file-ignores==3.2.0",
     "pyproject-fmt==2.11.1",
@@ -66,9 +66,10 @@ optional-dependencies.dev = [
     "shfmt-py==3.12.0.2",
     "sphinx-lint==1.0.2",
     "tomli==2.3.0",
-    "ty==0.0.7",
+    "ty==0.0.8",
     "vulture==2.14",
     "yamlfix==1.19.1",
+    "zizmor==1.19.0",
 ]
 optional-dependencies.release = [ "check-wheel-contents==0.6.3" ]
 urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
@@ -277,6 +278,7 @@ ignore = [
     "tests-pylintrc",
     "tests/**",
     "lint.mk",
+    "zizmor.yml",
 ]
 
 [tool.deptry]
