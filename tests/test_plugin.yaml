@@ -284,3 +284,46 @@
     func(1)
   out: |-
     main:2: error: Too many positional arguments for "func"  [misc]
+
+- case: ignore_name_setup_cfg
+  files:
+    - path: setup.cfg
+      content: |
+        [mypy]
+        plugins = mypy_strict_kwargs
+
+        [mypy_strict_kwargs]
+        ignore_names = main.func, builtins.str
+  main: |-
+    def func(a: int) -> None: ...
+    func(1)
+
+    def not_ignored(a: int) -> None: ...
+    not_ignored(1)
+
+    str(1)
+  out: |-
+    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+
+# This does not actually test the debug option, but it gives
+# us coverage at least.
+- case: debug_setup_cfg
+  files:
+    - path: setup.cfg
+      content: |
+        [mypy]
+        plugins = mypy_strict_kwargs
+
+        [mypy_strict_kwargs]
+        ignore_names = main.func, builtins.str
+        debug = true
+  main: |-
+    def func(a: int) -> None: ...
+    func(1)
+
+    def not_ignored(a: int) -> None: ...
+    not_ignored(1)
+
+    str(1)
+  out: |-
+    main:5: error: Too many positional arguments for "not_ignored"  [misc]

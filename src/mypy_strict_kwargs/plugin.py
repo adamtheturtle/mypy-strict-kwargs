@@ -129,7 +129,10 @@ class KeywordOnlyPlugin(Plugin):
             self._ignore_names = list(plugin_config.get("ignore_names", []))
             self._debug = bool(plugin_config.get("debug", False))
         # pragma: no branch
-        elif config_file.suffix == ".ini" or config_file.name.startswith("."):
+        elif config_file.suffix in {
+            ".ini",
+            ".cfg",
+        } or config_file.name.startswith("."):
             # Handle .ini files (mypy.ini, .mypy.ini, setup.cfg)
             parser = configparser.ConfigParser()
             parser.read(filenames=config_file)
