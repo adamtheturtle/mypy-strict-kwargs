@@ -129,7 +129,7 @@ class KeywordOnlyPlugin(Plugin):
             self._ignore_names = list(plugin_config.get("ignore_names", []))
             self._debug = bool(plugin_config.get("debug", False))
         else:
-            # Handle mypy.ini, .mypy.ini, setup.cfg
+            # Handle ``mypy.ini``, ``.mypy.ini``, ``setup.cfg``
             parser = configparser.ConfigParser()
             parser.read(filenames=config_file)
 
