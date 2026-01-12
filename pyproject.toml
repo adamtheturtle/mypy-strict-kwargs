@@ -123,9 +123,8 @@ lint.ignore = [
 ]
 
 lint.per-file-ignores."tests/*" = [
-    "INP001", # implicit namespace package
-    "S101",   # use of assert
-    "SLF001", # private member access
+    # use of assert in tests
+    "S101",
 ]
 # Do not automatically remove commented out code.
 # We comment out code during development, and with VSCode auto-save, this code
