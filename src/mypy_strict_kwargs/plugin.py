@@ -116,7 +116,7 @@ class KeywordOnlyPlugin(Plugin):
         self._ignore_names: list[str] = []
         self._debug = False
 
-        if options.config_file is None:  # pragma: no cover
+        if options.config_file is None:
             return
 
         config_file = Path(options.config_file)
