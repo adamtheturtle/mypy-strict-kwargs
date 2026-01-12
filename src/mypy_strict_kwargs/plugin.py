@@ -2,6 +2,7 @@
 ``mypy`` plugin to enforce strict keyword arguments.
 """
 
+import configparser
 import sys
 from collections.abc import Callable
 from functools import partial
@@ -112,21 +113,45 @@ class KeywordOnlyPlugin(Plugin):
         This is not friendly to errors yet.
         """
         super().__init__(options=options)
-        if options.config_file is None:  # pragma: no cover
+        self._ignore_names: list[str] = []
+        self._debug = False
+
+        if options.config_file is None:
             return
 
         config_file = Path(options.config_file)
-        if config_file.suffix != ".toml":  # pragma: no cover
-            # We do not currently support `.ini` files.
-            return
+        if config_file.suffix == ".toml":
+            with config_file.open(mode="rb") as rf:
+                config_dictionary = tomllib.load(rf)
 
-        with config_file.open(mode="rb") as rf:
-            config_dictionary = tomllib.load(rf)
+            tools = dict(config_dictionary.get("tool", {}))
+            plugin_config = dict(tools.get("mypy_strict_kwargs", {}))
+            self._ignore_names = list(plugin_config.get("ignore_names", []))
+            self._debug = bool(plugin_config.get("debug", False))
+        else:
+            # Handle ``mypy.ini``, ``.mypy.ini``, ``setup.cfg``
+            parser = configparser.ConfigParser()
+            parser.read(filenames=config_file)
 
-        tools = dict(config_dictionary.get("tool", {}))
-        plugin_config = dict(tools.get("mypy_strict_kwargs", {}))
-        self._ignore_names = list(plugin_config.get("ignore_names", []))
-        self._debug = bool(plugin_config.get("debug", False))
+            if parser.has_section(section="mypy_strict_kwargs"):
+                ignore_names_str = parser.get(
+                    section="mypy_strict_kwargs",
+                    option="ignore_names",
+                    fallback="",
+                )
+                if ignore_names_str:
+                    self._ignore_names = [
+                        name.strip()
+                        for name in ignore_names_str.split(sep=",")
+                        if name.strip()
+                    ]
+                self._debug = bool(
+                    parser.getboolean(
+                        section="mypy_strict_kwargs",
+                        option="debug",
+                        fallback=False,
+                    )
+                )
 
     def get_function_signature_hook(
         self,

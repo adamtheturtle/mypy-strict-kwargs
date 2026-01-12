@@ -4,6 +4,8 @@ Changelog
 Next
 ----
 
+- Add support for ``setup.cfg`` and ``mypy.ini`` configuration files.
+
 2025.04.03
 ----------
 

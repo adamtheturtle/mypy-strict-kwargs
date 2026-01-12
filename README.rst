@@ -46,14 +46,7 @@ Configure ``mypy`` to use the plugin
 
 Add the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/stable/config_file.html>`_:
 
-``.ini`` files:
-
-.. code-block:: ini
-
-   [mypy]
-   plugins = mypy_strict_kwargs
-
-``.toml`` files:
+``pyproject.toml``:
 
 .. code-block:: toml
 
@@ -63,24 +56,56 @@ Add the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/
        "mypy_strict_kwargs",
    ]
 
+``mypy.ini`` or ``.mypy.ini``:
+
+.. code-block:: ini
+
+   [mypy]
+   plugins = mypy_strict_kwargs
+
+``setup.cfg``:
+
+.. code-block:: ini
+
+   [mypy]
+   plugins = mypy_strict_kwargs
+
 Ignoring functions
 ------------------
 
-You can ignore functions by adding configuration to ``pyproject.toml``.
+You can ignore functions by adding configuration to your mypy configuration file.
+
+``pyproject.toml``:
 
 .. code-block:: toml
 
    [tool.mypy_strict_kwargs]
    ignore_names = ["main.func", "builtins.str"]
 
+``mypy.ini``, ``.mypy.ini``, or ``setup.cfg``:
+
+.. code-block:: ini
+
+   [mypy_strict_kwargs]
+   ignore_names = main.func, builtins.str
+
 This is useful especially for builtins which can look strange with keyword arguments.
 For example, ``str(object=1)`` is not idiomatic.
 
 To find the name of a function to ignore, set the following configuration:
 
+``pyproject.toml``:
+
 .. code-block:: toml
 
    [tool.mypy_strict_kwargs]
+   debug = true
+
+``mypy.ini``, ``.mypy.ini``, or ``setup.cfg``:
+
+.. code-block:: ini
+
+   [mypy_strict_kwargs]
    debug = true
 
 Then run ``mypy`` and look for the debug output.

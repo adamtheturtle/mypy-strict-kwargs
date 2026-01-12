@@ -122,6 +122,10 @@ lint.ignore = [
     "PLR0913",
 ]
 
+lint.per-file-ignores."tests/*" = [
+    # use of assert in tests
+    "S101",
+]
 # Do not automatically remove commented out code.
 # We comment out code during development, and with VSCode auto-save, this code
 # is sometimes annoyingly removed.
@@ -296,9 +300,6 @@ max_supported_python = "3.13"
 
 xfail_strict = true
 log_cli = true
-# * Use this pyproject.toml file for mypy configuration of tests.
-#   * --mypy-pyproject-toml-file=pyproject.toml
-#
 # Do not test unrelated stubs:
 # https://github.com/typeddjango/pytest-mypy-plugins/issues/134
 #  * --mypy-only-local-stub
@@ -306,7 +307,7 @@ log_cli = true
 # Use the same process so that we can get coverage.
 #  * --mypy-same-process
 #  * The help documentation says that this "will create problems with import cache"
-addopts = "--mypy-pyproject-toml-file=pyproject.toml --mypy-only-local-stub --mypy-same-process"
+addopts = "--mypy-only-local-stub --mypy-same-process"
 
 [tool.coverage.run]
 
