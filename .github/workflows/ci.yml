@@ -1,4 +1,5 @@
 ---
+
 name: Test
 
 on:
@@ -15,6 +16,7 @@ permissions: {}
 
 jobs:
   build:
+
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12', '3.13']
@@ -33,15 +35,11 @@ jobs:
           enable-cache: true
           cache-dependency-glob: '**/pyproject.toml'
 
-      - name: Run tests (pyproject.toml config)
+      - name: Run tests
         run: |
           # We run tests against "." and not the tests directory as we test the README
           # and documentation.
-          uv run --extra=dev --python=${{ matrix.python-version }} pytest -s -vvv --cov=src/ --cov=tests/ --ignore=tests/test_plugin_ini.yaml .
-
-      - name: Run tests (mypy.ini config)
-        run: |
-          uv run --extra=dev --python=${{ matrix.python-version }} pytest -s -vvv --cov=src/ --cov=tests/ --cov-append --cov-fail-under 100 -o addopts= --mypy-only-local-stub --mypy-same-process tests/test_plugin_ini.yaml
+          uv run --extra=dev --python=${{ matrix.python-version }} pytest -s -vvv --cov-fail-under 100 --cov=src/ --cov=tests/ .
 
   completion-ci:
     needs: build
