@@ -128,9 +128,8 @@ class KeywordOnlyPlugin(Plugin):
             plugin_config = dict(tools.get("mypy_strict_kwargs", {}))
             self._ignore_names = list(plugin_config.get("ignore_names", []))
             self._debug = bool(plugin_config.get("debug", False))
-        # pragma: no branch
-        elif config_file.suffix in {".ini", ".cfg"}:
-            # Handle .ini files (mypy.ini, .mypy.ini, setup.cfg)
+        else:
+            # Handle mypy.ini, .mypy.ini, setup.cfg
             parser = configparser.ConfigParser()
             parser.read(filenames=config_file)
 
