@@ -1,10 +1,16 @@
 ---
 - case: positional_only
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(a: int, /, b: str = "default") -> None: ...
     func(1)
 
 - case: positional
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(a: int) -> None: ...
     func(1)
@@ -12,6 +18,9 @@
     main:2: error: Too many positional arguments for "func"  [misc]
 
 - case: positional_optional
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(a: int = 1) -> None: ...
     func(1)
@@ -20,38 +29,59 @@
     main:2: error: Too many positional arguments for "func"  [misc]
 
 - case: keyword_only
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(*, a: int) -> None: ...
     func(a=1)
 
 - case: keyword_only_optional
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(*, a: int = 1) -> None: ...
     func(a=1)
     func()
 
 - case: var_positional
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(*args: str) -> None: ...
     func("extra")
 
 - case: var_keyword
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(**kwargs: str) -> None: ...
     func(a="extra")
 
 - case: positional_followed_by_var_positional
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(a: int, *args: str) -> None: ...
     func(1)
 
 - case: positional_optional_followed_by_var_positional
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(a: int = 1, *args: str) -> None: ...
     func(1)
     func()
 
 - case: positional_followed_by_var_keyword
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(a: int, **kwargs: str) -> None: ...
     func(1)
@@ -59,11 +89,17 @@
     main:2: error: Too many positional arguments for "func"  [misc]
 
 - case: var_positional_followed_by_keyword
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |
     def func(*args: str, a: int) -> None: ...
     func("a", a=1)
 
 - case: method
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |-
     class C:
         def __init__(self) -> None: ...
@@ -76,6 +112,9 @@
     main:7: error: Too many positional arguments for "method" of "C"  [misc]
 
 - case: callable_class_as_decorator
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |-
     from typing import Any
 
@@ -86,6 +125,9 @@
     def func() -> None: ...
 
 - case: callable_class_extra_params
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |-
     from typing import Any
 
@@ -100,6 +142,9 @@
     main:7: error: Too many positional arguments for "__call__" of "C"  [misc]
 
 - case: descriptor
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |-
     class D:
       def __get__(self, o: object, ot: type | None = None) -> None:
