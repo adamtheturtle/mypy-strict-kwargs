@@ -145,10 +145,12 @@ class KeywordOnlyPlugin(Plugin):
                         for name in ignore_names_str.split(sep=",")
                         if name.strip()
                     ]
-                self._debug = parser.getboolean(
-                    section="mypy_strict_kwargs",
-                    option="debug",
-                    fallback=False,
+                self._debug = bool(
+                    parser.getboolean(
+                        section="mypy_strict_kwargs",
+                        option="debug",
+                        fallback=False,
+                    )
                 )
 
     def get_function_signature_hook(
