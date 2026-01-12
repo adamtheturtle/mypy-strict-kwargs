@@ -41,7 +41,7 @@ jobs:
 
       - name: Run tests (mypy.ini config)
         run: |
-          uv run --extra=dev --python=${{ matrix.python-version }} pytest -s -vvv --cov=src/ --cov=tests/ --cov-append --cov-fail-under 100 -o addopts= --mypy-ini-file=tests/mypy.ini --mypy-only-local-stub --mypy-same-process tests/test_plugin_ini.yaml
+          uv run --extra=dev --python=${{ matrix.python-version }} pytest -s -vvv --cov=src/ --cov=tests/ --cov-append --cov-fail-under 100 -o addopts= --mypy-only-local-stub --mypy-same-process tests/test_plugin_ini.yaml
 
   completion-ci:
     needs: build

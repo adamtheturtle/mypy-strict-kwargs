@@ -1,6 +1,9 @@
 ---
 - case: ignore_name_ini
   mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+
     [mypy_strict_kwargs]
     ignore_names = main.func, builtins.str
   main: |-
@@ -18,6 +21,9 @@
 # us coverage at least.
 - case: debug_ini
   mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+
     [mypy_strict_kwargs]
     ignore_names = main.func, builtins.str
     debug = true
@@ -34,6 +40,9 @@
 
 - case: ignore_name_ini_no_spaces
   mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+
     [mypy_strict_kwargs]
     ignore_names = main.func,builtins.str
   main: |-
@@ -49,6 +58,9 @@
 
 # Test when no mypy_strict_kwargs section exists - plugin should work with defaults
 - case: no_plugin_section_ini
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
   main: |-
     def func(a: int) -> None: ...
     func(1)
@@ -58,6 +70,9 @@
 # Test when ignore_names is empty
 - case: empty_ignore_names_ini
   mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+
     [mypy_strict_kwargs]
     ignore_names =
   main: |-
