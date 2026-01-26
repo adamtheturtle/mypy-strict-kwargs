@@ -12,7 +12,7 @@ ci:
     - check-manifest
     - deptry
     - doc8
-    - docformatter
+    - pydocstringformatter
     - interrogate
     - interrogate-docs
     - mypy
@@ -83,9 +83,9 @@ repos:
         types_or: [yaml]
         additional_dependencies: [uv==0.9.5]
 
-      - id: docformatter
-        name: docformatter
-        entry: uv run --extra=dev -m docformatter --in-place
+      - id: pydocstringformatter
+        name: pydocstringformatter
+        entry: uv run --extra=dev pydocstringformatter
         language: python
         types_or: [python]
         additional_dependencies: [uv==0.9.5]

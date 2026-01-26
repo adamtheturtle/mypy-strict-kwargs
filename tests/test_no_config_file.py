@@ -1,6 +1,4 @@
-"""
-Test plugin behavior when no configuration file is provided.
-"""
+"""Test plugin behavior when no configuration file is provided."""
 
 from mypy.options import Options
 
@@ -9,7 +7,8 @@ from mypy_strict_kwargs.plugin import KeywordOnlyPlugin
 
 def test_no_config_file() -> None:
     """
-    Test that plugin provides hooks when no configuration file exists.
+    Test that plugin provides hooks when no configuration file
+    exists.
     """
     options = Options()
 
