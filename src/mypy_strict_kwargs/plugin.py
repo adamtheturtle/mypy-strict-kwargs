@@ -1,6 +1,4 @@
-"""
-``mypy`` plugin to enforce strict keyword arguments.
-"""
+"""``mypy`` plugin to enforce strict keyword arguments."""
 
 import configparser
 import sys
@@ -22,9 +20,7 @@ def _transform_signature(
     ignore_names: list[str],
     debug: bool,
 ) -> CallableType:
-    """
-    Transform positional arguments to keyword-only arguments.
-    """
+    """Transform positional arguments to keyword-only arguments."""
     if debug:
         sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
 
@@ -104,7 +100,8 @@ def _transform_signature(
 
 class KeywordOnlyPlugin(Plugin):
     """
-    A plugin that transforms positional arguments to keyword-only arguments.
+    A plugin that transforms positional arguments to keyword-only
+    arguments.
     """
 
     def __init__(self, options: Options) -> None:
@@ -157,9 +154,7 @@ class KeywordOnlyPlugin(Plugin):
         self,
         fullname: str,
     ) -> Callable[[FunctionSigContext], CallableType] | None:
-        """
-        Transform positional arguments to keyword-only arguments.
-        """
+        """Transform positional arguments to keyword-only arguments."""
         return partial(
             _transform_signature,
             fullname=fullname,
@@ -171,9 +166,7 @@ class KeywordOnlyPlugin(Plugin):
         self,
         fullname: str,
     ) -> Callable[[MethodSigContext], CallableType] | None:
-        """
-        Transform positional arguments to keyword-only arguments.
-        """
+        """Transform positional arguments to keyword-only arguments."""
         return partial(
             _transform_signature,
             fullname=fullname,
@@ -183,8 +176,6 @@ class KeywordOnlyPlugin(Plugin):
 
 
 def plugin(version: str) -> type[KeywordOnlyPlugin]:
-    """
-    Plugin entry point.
-    """
+    """Plugin entry point."""
     del version  # to satisfy vulture
     return KeywordOnlyPlugin
