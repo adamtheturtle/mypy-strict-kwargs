@@ -348,6 +348,9 @@ typeCheckingMode = "strict"
 # used to configure a type hint.
 defineConstant = { MYPYC = false }
 
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+
 [tool.pydocstringformatter]
 write = true
 split-summary-body = false
