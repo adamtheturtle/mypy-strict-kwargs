@@ -51,7 +51,7 @@ optional-dependencies.dev = [
     "pydocstringformatter==0.7.5",
     "pylint[spelling]==4.0.4",
     "pylint-per-file-ignores==3.2.0",
-    "pyproject-fmt==2.14.0",
+    "pyproject-fmt==2.14.2",
     "pyrefly==0.51.1",
     "pyright==1.1.408",
     "pyroma==5.0.1",
@@ -60,15 +60,15 @@ optional-dependencies.dev = [
     "pytest-mypy-plugins==3.2.0",
     "pyyaml==6.0.3",
     "ruff==0.15.0",
+    # We add shellcheck-py not only for shell scripts and shell code blocks,
+    # but also because having it installed means that ``actionlint-py`` will
+    # use it to lint shell commands in GitHub workflow files.
+    "shellcheck-py==0.11.0.1",
     "shfmt-py==3.12.0.2",
     "sphinx-lint==1.0.2",
     "tomli==2.4.0",
     "ty==0.0.15",
     "vulture==2.14",
-    # We add shellcheck-py not only for shell scripts and shell code blocks,
-    # but also because having it installed means that ``actionlint-py`` will
-    # use it to lint shell commands in GitHub workflow files.
-    "shellcheck-py==0.11.0.1",
     "yamlfix==1.19.1",
     "zizmor==1.22.0",
 ]
@@ -103,24 +103,24 @@ lint.select = [
     "ALL",
 ]
 lint.ignore = [
+    # Ruff warns that this conflicts with the formatter.
+    "COM812",
     # Allow our chosen docstring line-style - pydocstringformatter handles formatting
     # but doesn't enforce D205 (blank line after summary) or D212 (summary on first line).
     "D205",
+    "D212",
+    # Ruff warns that this conflicts with the formatter.
+    "ISC001",
     # Ignore 'too-many-*' errors as they seem to get in the way more than
     # helping.
     "PLR0913",
-    # Ruff warns that this conflicts with the formatter.
-    "COM812",
-    # Ruff warns that this conflicts with the formatter.
-    "ISC001",
-    "D212",
 ]
 lint.per-file-ignores."doccmd_*.py" = [
-    # Allow asserts in docs.
-    "S101",
     # Allow our chosen docstring line-style - pydocstringformatter handles
     # formatting but docstrings in docs may not match this style.
     "D200",
+    # Allow asserts in docs.
+    "S101",
 ]
 lint.per-file-ignores."tests/*" = [
     # use of assert in tests
