@@ -51,7 +51,7 @@ optional-dependencies.dev = [
     "pydocstringformatter==0.7.5",
     "pylint[spelling]==4.0.4",
     "pylint-per-file-ignores==3.2.0",
-    "pyproject-fmt==2.14.2",
+    "pyproject-fmt==2.15.2",
     "pyrefly==0.52.0",
     "pyright==1.1.408",
     "pyroma==5.0.1",
@@ -285,10 +285,10 @@ ini_options.log_cli = true
 ini_options.addopts = "--mypy-only-local-stub --mypy-same-process"
 
 [tool.coverage]
+run.branch = true
 report.exclude_also = [
     "if TYPE_CHECKING:",
 ]
-run.branch = true
 
 [tool.mypy]
 strict = true
