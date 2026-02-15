@@ -302,6 +302,9 @@ plugins = [
 ]
 follow_untyped_imports = true
 
+[tool.pyrefly]
+errors.non-exhaustive-match = "error"
+
 [tool.pyright]
 reportUnnecessaryTypeIgnoreComment = true
 enableTypeIgnoreComments = false
