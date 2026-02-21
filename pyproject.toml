@@ -273,8 +273,8 @@ keep_full_version = true
 max_supported_python = "3.14"
 
 [tool.pytest]
-ini_options.xfail_strict = true
-ini_options.log_cli = true
+xfail_strict = true
+log_cli = true
 # Do not test unrelated stubs:
 # https://github.com/typeddjango/pytest-mypy-plugins/issues/134
 #  * --mypy-only-local-stub
@@ -282,7 +282,7 @@ ini_options.log_cli = true
 # Use the same process so that we can get coverage.
 #  * --mypy-same-process
 #  * The help documentation says that this "will create problems with import cache"
-ini_options.addopts = "--mypy-only-local-stub --mypy-same-process"
+addopts = [ "--mypy-only-local-stub", "--mypy-same-process" ]
 
 [tool.coverage]
 run.branch = true
