@@ -34,9 +34,6 @@ dynamic = [
 ]
 dependencies = [
     "mypy>=1.13.0",
-    # We can switch to tomllib from the standard library in Python 3.11+.
-    # Working with conditional imports in Python 3.11+ is too difficult.
-    "tomli>=1.2.2",
 ]
 optional-dependencies.dev = [
     "actionlint-py==1.7.10.24",
@@ -65,7 +62,6 @@ optional-dependencies.dev = [
     "shellcheck-py==0.11.0.1",
     "shfmt-py==3.12.0.2",
     "sphinx-lint==1.0.2",
-    "tomli==2.4.0",
     "ty==0.0.19",
     "vulture==2.14",
     "yamlfix==1.19.1",
