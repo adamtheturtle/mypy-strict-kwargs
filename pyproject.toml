@@ -53,7 +53,7 @@ optional-dependencies.dev = [
     "pyroma==5.0.1",
     "pytest==9.0.2",
     "pytest-cov==7.0.0",
-    "pytest-mypy-plugins==3.3.0",
+    "pytest-mypy-plugins==4.0.0",
     "pyyaml==6.0.3",
     "ruff==0.15.5",
     # We add shellcheck-py not only for shell scripts and shell code blocks,
@@ -270,14 +270,10 @@ max_supported_python = "3.14"
 [tool.pytest]
 xfail_strict = true
 log_cli = true
-# Do not test unrelated stubs:
-# https://github.com/typeddjango/pytest-mypy-plugins/issues/134
-#  * --mypy-only-local-stub
-#
 # Use the same process so that we can get coverage.
 #  * --mypy-same-process
 #  * The help documentation says that this "will create problems with import cache"
-addopts = [ "--mypy-only-local-stub", "--mypy-same-process" ]
+addopts = [ "--mypy-same-process" ]
 
 [tool.coverage]
 run.branch = true
