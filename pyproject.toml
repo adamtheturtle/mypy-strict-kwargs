@@ -267,21 +267,6 @@ indent = 4
 keep_full_version = true
 max_supported_python = "3.14"
 
-[tool.pytest]
-xfail_strict = true
-log_cli = true
-# Use the same process so that we can get coverage.
-#  * --mypy-same-process
-#  * The help documentation says that this "will create problems with import cache"
-addopts = [ "--mypy-same-process" ]
-
-[tool.coverage]
-run.branch = true
-report.exclude_also = [
-    "if TYPE_CHECKING:",
-]
-report.show_missing = true
-
 [tool.mypy]
 strict = true
 files = [ "." ]
@@ -312,6 +297,21 @@ defineConstant = { MYPYC = false }
 analysis.respect-type-ignore-comments = false
 # Error if ty emits any warning-level diagnostics.
 terminal.error-on-warning = true
+
+[tool.pytest]
+xfail_strict = true
+log_cli = true
+# Use the same process so that we can get coverage.
+#  * --mypy-same-process
+#  * The help documentation says that this "will create problems with import cache"
+addopts = [ "--mypy-same-process" ]
+
+[tool.coverage]
+run.branch = true
+report.exclude_also = [
+    "if TYPE_CHECKING:",
+]
+report.show_missing = true
 
 [tool.pydocstringformatter]
 write = true
