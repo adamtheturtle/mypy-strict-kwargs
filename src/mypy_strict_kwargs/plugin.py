@@ -35,6 +35,15 @@ def _transform_signature(
 
     first_star_arg_index = star_arg_indices[0] if star_arg_indices else None
 
+    # Some methods are called by Python with all positional arguments.
+    skip_all_arguments_suffixes = (
+        # Context manager exit - called with (exc_type, exc_val, exc_tb).
+        ".__exit__",
+        # Async context manager exit - called with (exc_type, exc_val, exc_tb).
+        ".__aexit__",
+    )
+    skip_all_arguments = fullname.endswith(skip_all_arguments_suffixes)
+
     # Some methods get called with a positional argument that we do not supply.
     skip_first_argument_suffixes = (
         # Gets called when an instance of the class is called.
@@ -75,7 +84,7 @@ def _transform_signature(
         # If name is None, it is a positional-only argument; leave it as is
         is_positional_only = name is None
         should_ignore = fullname in ignore_names
-        if is_positional_only or should_ignore:
+        if is_positional_only or should_ignore or skip_all_arguments:
             new_arg_kinds.append(kind)
 
         # Transform positional arguments that can also be keyword arguments

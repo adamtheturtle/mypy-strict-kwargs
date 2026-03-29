@@ -160,6 +160,54 @@
     c.a
     c.a = 1
 
+- case: context_manager_exit
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from types import TracebackType
+
+    class CM:
+        def __enter__(self) -> "CM":
+            return self
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc_val: BaseException | None,
+            exc_tb: TracebackType | None,
+        ) -> None:
+            pass
+
+    with CM():
+        pass
+
+- case: async_context_manager_aexit
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    import asyncio
+    from types import TracebackType
+
+    class ACM:
+        async def __aenter__(self) -> "ACM":
+            return self
+
+        async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc_val: BaseException | None,
+            exc_tb: TracebackType | None,
+        ) -> None:
+            pass
+
+    async def main() -> None:
+        async with ACM():
+            pass
+
+    asyncio.run(main=main())
+
 - case: ignore_name
   files:
     - path: pyproject.toml
