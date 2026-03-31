@@ -180,9 +180,11 @@
   out: |-
     main:5: error: Too many positional arguments for "not_ignored"  [misc]
 
-# This does not actually test the debug option, but it gives
-# us coverage at least.
+# We disable the cache for debug tests so that --mypy-same-process
+# does not skip calling the signature hooks (which would miss the
+# debug branch for coverage).
 - case: debug
+  disable_cache: true
   files:
     - path: pyproject.toml
       content: |
@@ -221,9 +223,11 @@
   out: |-
     main:5: error: Too many positional arguments for "not_ignored"  [misc]
 
-# This does not actually test the debug option, but it gives
-# us coverage at least.
+# We disable the cache for debug tests so that --mypy-same-process
+# does not skip calling the signature hooks (which would miss the
+# debug branch for coverage).
 - case: debug_ini
+  disable_cache: true
   mypy_config: |
     [mypy]
     plugins = mypy_strict_kwargs
@@ -325,9 +329,11 @@
   out: |-
     main:5: error: Too many positional arguments for "not_ignored"  [misc]
 
-# This does not actually test the debug option, but it gives
-# us coverage at least.
+# We disable the cache for debug tests so that --mypy-same-process
+# does not skip calling the signature hooks (which would miss the
+# debug branch for coverage).
 - case: debug_setup_cfg
+  disable_cache: true
   files:
     - path: setup.cfg
       content: |
