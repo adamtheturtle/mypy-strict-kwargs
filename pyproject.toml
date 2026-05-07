@@ -33,7 +33,7 @@ dynamic = [
     "version",
 ]
 dependencies = [
-    "mypy>=1.13.0",
+    "mypy>=2.0.0",
 ]
 optional-dependencies.dev = [
     "actionlint-py==1.7.12.24",
@@ -42,7 +42,7 @@ optional-dependencies.dev = [
     "doc8==2.0.0",
     "doccmd==2026.3.26.2",
     "interrogate==1.7.0",
-    "mypy[faster-cache]==1.20.2",
+    "mypy[faster-cache]==2.0.0",
     "prek==0.3.13",
     "pydocstringformatter==0.7.5",
     "pylint[spelling]==4.0.5",
