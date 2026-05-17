@@ -283,6 +283,7 @@ class KeywordOnlyPlugin(Plugin):
 
         A module that contains no normally type checked call never
         triggers a signature hook, so its special forms are not walked.
+        See https://github.com/adamtheturtle/mypy-strict-kwargs/issues/454.
         """
         if self._modules is None:
             return
