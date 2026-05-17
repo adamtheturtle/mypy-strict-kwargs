@@ -160,6 +160,128 @@
     c.a
     c.a = 1
 
+# ``TypeVar``/``ParamSpec``/``TypeVarTuple``/``NewType`` are special forms
+# that ``mypy`` does not route through a call-site signature hook.  A
+# normally type checked call (``trigger``) is included so that the plugin
+# has an opportunity to walk the module and report these.
+- case: special_form_typevar
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import TypeVar
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    _T = TypeVar("_T")
+  out: |
+    main:6: error: Too many positional arguments for "TypeVar"  [misc]
+
+- case: special_form_paramspec
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import ParamSpec
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    _P = ParamSpec("_P")
+  out: |
+    main:6: error: Too many positional arguments for "ParamSpec"  [misc]
+
+- case: special_form_typevartuple
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import TypeVarTuple
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    _Ts = TypeVarTuple("_Ts")
+  out: |
+    main:6: error: Too many positional arguments for "TypeVarTuple"  [misc]
+
+- case: special_form_newtype
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import NewType
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    UserId = NewType("UserId", int)
+  out: |
+    main:6: error: Too many positional arguments for "NewType"  [misc]
+
+- case: special_form_typevar_with_bound
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import TypeVar
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    _T = TypeVar("_T", bound=int)
+  out: |
+    main:6: error: Too many positional arguments for "TypeVar"  [misc]
+
+- case: special_form_in_class_body
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import TypeVar
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+
+    class C:
+        _T = TypeVar("_T")
+  out: |
+    main:8: error: Too many positional arguments for "TypeVar"  [misc]
+
+- case: special_form_in_function
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import TypeVar
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+
+    def f() -> None:
+        _T = TypeVar("_T")
+        del _T
+  out: |
+    main:8: error: Too many positional arguments for "TypeVar"  [misc]
+
+- case: special_form_ignored
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+
+    [mypy_strict_kwargs]
+    ignore_names = typing.TypeVar
+  main: |
+    from typing import TypeVar
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    _T = TypeVar("_T")
+
 - case: ignore_name
   files:
     - path: pyproject.toml

@@ -6,11 +6,120 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import cast
 
-from mypy.nodes import ArgKind
+from mypy.errorcodes import MISC
+from mypy.nodes import (
+    ArgKind,
+    AssignmentStmt,
+    Block,
+    CallExpr,
+    Expression,
+    MypyFile,
+    NewTypeExpr,
+    ParamSpecExpr,
+    RefExpr,
+    Statement,
+    TypeVarExpr,
+    TypeVarTupleExpr,
+)
 from mypy.options import Options
 from mypy.plugin import FunctionSigContext, MethodSigContext, Plugin
 from mypy.types import CallableType
+
+# ``TypeVar``, ``ParamSpec``, ``TypeVarTuple`` and ``NewType`` are processed
+# by ``mypy``'s semantic analyzer as dedicated special-form expressions
+# rather than as ordinary calls, so no call-site signature hook ever fires
+# for them.  They are instead found by walking the analyzed tree.
+#
+# Each entry maps the analyzed expression type to the name used in error
+# messages and the number of leading positional-or-keyword parameters that
+# the strict-kwargs rule requires to be passed by keyword.  For the
+# type-variable-like forms only ``name`` is positional-or-keyword (any
+# further positional arguments are ``*constraints``, which are genuinely
+# variadic).  ``NewType`` has two: ``name`` and ``tp``.
+_SPECIAL_FORMS: dict[type[Expression], tuple[str, int]] = {
+    TypeVarExpr: ("TypeVar", 1),
+    ParamSpecExpr: ("ParamSpec", 1),
+    TypeVarTupleExpr: ("TypeVarTuple", 1),
+    NewTypeExpr: ("NewType", 2),
+}
+
+# Statement attributes that hold nested statements.  ``mypy``'s visitor
+# classes are compiled traits that an interpreted plugin cannot subclass,
+# so the tree is walked by hand following these container attributes.
+_CHILD_STATEMENT_ATTRS = (
+    "body",
+    "else_body",
+    "finally_body",
+    "defs",
+    "func",
+    "impl",
+    "items",
+    "handlers",
+    "bodies",
+)
+
+
+def _iter_statements(statements: list[Statement]) -> list[Statement]:
+    """
+    Return every statement reachable from ``statements``, including
+    those inside function bodies, class bodies and compound statements.
+    """
+    collected: list[Statement] = []
+    stack = list(statements)
+    while stack:
+        statement = stack.pop()
+        collected.append(statement)
+        for attr in _CHILD_STATEMENT_ATTRS:
+            value: object = getattr(statement, attr, None)
+            children: list[object] = []
+            if isinstance(value, Block):
+                children.extend(value.body)
+            elif isinstance(value, Statement):
+                children.append(value)
+            elif isinstance(value, list):
+                children.extend(cast("list[object]", value))
+            for child in children:
+                if isinstance(child, Block):
+                    stack.extend(child.body)
+                elif isinstance(child, Statement):
+                    stack.append(child)
+    return collected
+
+
+def _find_special_form_violations(
+    tree: MypyFile,
+    *,
+    ignore_names: list[str],
+) -> list[tuple[CallExpr, str]]:
+    """
+    Return ``(call, display_name)`` pairs for special-form definitions
+    in ``tree`` that pass positional arguments where the strict-kwargs
+    rule requires keyword arguments.  ``ignore_names`` holds fully
+    qualified names to skip.
+    """
+    violations: list[tuple[CallExpr, str]] = []
+    for statement in _iter_statements(statements=tree.defs):
+        if not isinstance(statement, AssignmentStmt):
+            continue
+        call = statement.rvalue
+        if not isinstance(call, CallExpr) or call.analyzed is None:
+            continue
+        for expr_type, (display_name, prefix) in _SPECIAL_FORMS.items():
+            if not isinstance(call.analyzed, expr_type):
+                continue
+            callee = call.callee
+            if isinstance(callee, RefExpr) and callee.fullname in ignore_names:
+                break
+            uses_positional = any(
+                call.arg_kinds[index] == ArgKind.ARG_POS
+                for index in range(min(prefix, len(call.arg_kinds)))
+            )
+            if uses_positional:
+                violations.append((call, display_name))
+            break
+    return violations
 
 
 def _transform_signature(
@@ -112,6 +221,9 @@ class KeywordOnlyPlugin(Plugin):
         super().__init__(options=options)
         self._ignore_names: list[str] = []
         self._debug = False
+        self._special_form_violations: dict[
+            str, list[tuple[CallExpr, str]]
+        ] = {}
 
         if options.config_file is None:
             return
@@ -150,29 +262,90 @@ class KeywordOnlyPlugin(Plugin):
                     )
                 )
 
+    def _check_special_forms(
+        self,
+        ctx: FunctionSigContext | MethodSigContext,
+    ) -> None:
+        """
+        Flag special-form definitions that pass positional arguments.
+
+        ``TypeVar``, ``ParamSpec``, ``TypeVarTuple`` and ``NewType`` are
+        processed by ``mypy``'s semantic analyzer and never reach a
+        call-site signature hook, so the module being type checked is
+        walked to report any that pass positional arguments where
+        keyword arguments are required.
+
+        Signature hooks may run inside speculative, error-suppressed
+        type checking (for example, during operator or overload
+        resolution), so the cached violations are re-reported on every
+        invocation.  ``mypy`` drops the suppressed copies and removes
+        the remaining duplicates.
+
+        A module that contains no normally type checked call never
+        triggers a signature hook, so its special forms are not walked.
+        """
+        if self._modules is None:
+            return
+        # ``pylint`` cannot introspect the compiled ``mypy.plugin.Plugin``
+        # base class, so it does not know ``_modules`` is a mapping.
+        modules = self._modules.values()  # pylint: disable=no-member
+
+        path = ctx.api.path
+        if path not in self._special_form_violations:
+            tree: MypyFile | None = next(
+                (module for module in modules if module.path == path),
+                None,
+            )
+            if tree is not None and not tree.is_stub:
+                self._special_form_violations[path] = (
+                    _find_special_form_violations(
+                        tree=tree,
+                        ignore_names=self._ignore_names,
+                    )
+                )
+            else:
+                self._special_form_violations[path] = []
+
+        for call, display_name in self._special_form_violations[path]:
+            if self._debug:
+                sys.stderr.write(
+                    f"DEBUG: mypy_strict_kwargs: {display_name} "
+                    f"at {path}:{call.line}\n"
+                )
+            ctx.api.fail(
+                f'Too many positional arguments for "{display_name}"',
+                call,
+                code=MISC,
+            )
+
+    def _signature_hook(
+        self,
+        ctx: FunctionSigContext | MethodSigContext,
+        *,
+        fullname: str,
+    ) -> CallableType:
+        """Check special forms, then transform the call signature."""
+        self._check_special_forms(ctx=ctx)
+        return _transform_signature(
+            ctx=ctx,
+            fullname=fullname,
+            ignore_names=self._ignore_names,
+            debug=self._debug,
+        )
+
     def get_function_signature_hook(
         self,
         fullname: str,
     ) -> Callable[[FunctionSigContext], CallableType] | None:
         """Transform positional arguments to keyword-only arguments."""
-        return partial(
-            _transform_signature,
-            fullname=fullname,
-            ignore_names=self._ignore_names,
-            debug=self._debug,
-        )
+        return partial(self._signature_hook, fullname=fullname)
 
     def get_method_signature_hook(
         self,
         fullname: str,
     ) -> Callable[[MethodSigContext], CallableType] | None:
         """Transform positional arguments to keyword-only arguments."""
-        return partial(
-            _transform_signature,
-            fullname=fullname,
-            ignore_names=self._ignore_names,
-            debug=self._debug,
-        )
+        return partial(self._signature_hook, fullname=fullname)
 
 
 def plugin(version: str) -> type[KeywordOnlyPlugin]:

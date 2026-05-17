@@ -4,6 +4,8 @@ Changelog
 Next
 ----
 
+- Flag positional arguments passed to the ``TypeVar``, ``ParamSpec``,
+  ``TypeVarTuple`` and ``NewType`` special forms.
 - Drop Python 3.10 support (requires Python >=3.11).
 
 2026.01.12

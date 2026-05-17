@@ -1,2 +1,8 @@
+NewType
+ParamSpec
+TypeVar
+TypeVarTuple
+kwargs
 pragma
 pyrefly
+variadic
