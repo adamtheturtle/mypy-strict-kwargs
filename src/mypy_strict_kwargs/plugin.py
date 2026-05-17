@@ -283,11 +283,12 @@ class KeywordOnlyPlugin(Plugin):
         triggers a signature hook, so its special forms are not walked.
         See https://github.com/adamtheturtle/mypy-strict-kwargs/issues/454.
         """
-        if self._modules is None:
-            return
+        # ``mypy`` always calls ``set_modules`` before any signature hook
+        # fires, so ``_modules`` is populated by the time this runs.
         # ``pylint`` cannot introspect the compiled ``mypy.plugin.Plugin``
         # base class, so it does not know ``_modules`` is a mapping.
-        modules = self._modules.values()  # pylint: disable=no-member
+        all_modules = cast("dict[str, MypyFile]", self._modules)
+        modules = all_modules.values()  # pylint: disable=no-member
 
         path = ctx.api.path
         if path not in self._special_form_violations:

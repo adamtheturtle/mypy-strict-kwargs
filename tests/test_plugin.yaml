@@ -282,6 +282,57 @@
     trigger(x=1)
     _T = TypeVar("_T")
 
+# A special form whose ``name`` is passed by keyword is not a
+# strict-kwargs violation (``mypy`` rejects it separately).
+- case: special_form_keyword_name_not_flagged
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import NewType
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    U = NewType(name="U", tp=int)
+  out: |
+    main:6: error: NewType(...) expects exactly two positional arguments  [misc]
+
+# A non-special-form analyzed call (here ``TypedDict``) is walked but
+# never matches, so nothing is reported.
+- case: non_special_form_analyzed_call_not_flagged
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |
+    from typing import TypedDict
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    D = TypedDict("D", {"a": int})
+
+# We disable the cache for debug tests so that --mypy-same-process
+# does not skip calling the signature hooks (which would miss the
+# debug branch for coverage).
+- case: special_form_debug
+  disable_cache: true
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+
+    [mypy_strict_kwargs]
+    debug = true
+  main: |
+    from typing import TypeVar
+
+    def trigger(*, x: int) -> None: ...
+
+    trigger(x=1)
+    _T = TypeVar("_T")
+  out: |
+    main:6: error: Too many positional arguments for "TypeVar"  [misc]
+
 - case: ignore_name
   files:
     - path: pyproject.toml
