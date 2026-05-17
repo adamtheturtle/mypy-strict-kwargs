@@ -73,13 +73,11 @@ def _iter_statements(statements: list[Statement]) -> list[Statement]:
         collected.append(statement)
         for attr in _CHILD_STATEMENT_ATTRS:
             value: object = getattr(statement, attr, None)
-            children: list[object] = []
-            if isinstance(value, Block):
-                children.extend(value.body)
-            elif isinstance(value, Statement):
-                children.append(value)
-            elif isinstance(value, list):
-                children.extend(cast("list[object]", value))
+            children = (
+                cast("list[object]", value)
+                if isinstance(value, list)
+                else [value]
+            )
             for child in children:
                 if isinstance(child, Block):
                     stack.extend(child.body)
