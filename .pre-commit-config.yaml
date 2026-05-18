@@ -35,6 +35,7 @@ ci:
     - shfmt
     - shfmt-docs
     - sphinx-lint
+    - strict-kwargs-fix
     - ty
     - ty-docs
     - pyrefly
@@ -317,6 +318,16 @@ repos:
         types_or: [markdown, rst]
         additional_dependencies:
           - *uv_version
+
+
+      - id: strict-kwargs-fix
+        name: strict-kwargs
+        entry: uv run --extra=dev strict-kwargs fix
+        language: python
+        types_or: [python]
+        additional_dependencies:
+          - *uv_version
+        require_serial: true
 
       - id: doc8
         name: doc8
