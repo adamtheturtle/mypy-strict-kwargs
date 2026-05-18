@@ -319,7 +319,6 @@ repos:
         additional_dependencies:
           - *uv_version
 
-
       - id: strict-kwargs-fix
         name: strict-kwargs
         entry: uv run --extra=dev strict-kwargs fix
