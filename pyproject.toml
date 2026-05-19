@@ -342,6 +342,7 @@ exclude = [ ".venv" ]
 ignore_names = [
     # mypy hooks:
     # https://mypy.readthedocs.io/en/latest/extending_mypy.html#current-list-of-plugin-hooks.
+    "get_base_class_hook",
     "get_function_signature_hook",
     "get_method_signature_hook",
 ]

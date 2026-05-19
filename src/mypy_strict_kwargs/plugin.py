@@ -6,11 +6,37 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import cast
 
-from mypy.nodes import ArgKind
+from mypy.nodes import ArgKind, Decorator, FuncDef, OverloadedFuncDef, TypeInfo
 from mypy.options import Options
-from mypy.plugin import FunctionSigContext, MethodSigContext, Plugin
-from mypy.types import CallableType
+from mypy.plugin import (
+    ClassDefContext,
+    FunctionSigContext,
+    MethodSigContext,
+    Plugin,
+)
+from mypy.types import (
+    CallableType,
+    FunctionLike,
+    Overloaded,
+    ProperType,
+    Type,
+    get_proper_type,
+)
+
+
+def _preserved_positional_argument_count(fullname: str) -> int:
+    """Return positional arguments to keep positional after method binding."""
+    # Some methods get called with positional arguments that callers do not
+    # supply explicitly.
+    if fullname.endswith((".__get__", ".__set__")):
+        # Descriptor attribute access and assignment.
+        return 2
+    if fullname.endswith(".__call__"):
+        # Called implicitly when an instance of the class is called.
+        return 1
+    return 0
 
 
 def _transform_signature(
@@ -24,51 +50,52 @@ def _transform_signature(
     if debug:
         sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
 
-    original_sig: CallableType = ctx.default_signature
+    return _transform_callable_type(
+        signature=ctx.default_signature,
+        fullname=fullname,
+        ignore_names=ignore_names,
+        skip_bound_argument=False,
+    )
+
+
+def _transform_callable_type(
+    *,
+    signature: CallableType,
+    fullname: str,
+    ignore_names: list[str],
+    skip_bound_argument: bool,
+) -> CallableType:
+    """Transform positional arguments in a callable type."""
     new_arg_kinds: list[ArgKind] = []
 
     star_arg_indices = [
         index
-        for index, kind in enumerate(iterable=original_sig.arg_kinds)
+        for index, kind in enumerate(iterable=signature.arg_kinds)
         if kind == ArgKind.ARG_STAR
     ]
 
     first_star_arg_index = star_arg_indices[0] if star_arg_indices else None
 
-    # Some methods get called with a positional argument that we do not supply.
-    skip_first_argument_suffixes = (
-        # Gets called when an instance of the class is called.
-        ".__call__",
-        # Descriptor attribute access
-        ".__get__",
-        # Descriptor attribute assignment
-        ".__set__",
+    preserved_positional_argument_count = _preserved_positional_argument_count(
+        fullname=fullname,
     )
-    skip_first_argument = fullname.endswith(skip_first_argument_suffixes)
+    skip_offset = 1 if skip_bound_argument else 0
+    skip_indices = {
+        index + skip_offset
+        for index in range(preserved_positional_argument_count)
+    }
 
-    skip_second_argument_suffixes = (
-        # Descriptor attribute access.
-        # The second argument is the instance of the class.
-        ".__get__",
-        # Descriptor attribute assignment.
-        # The second argument is the value to be assigned.
-        ".__set__",
-    )
-
-    skip_second_argument = fullname.endswith(skip_second_argument_suffixes)
+    if skip_bound_argument:
+        skip_indices.add(0)
 
     for index, (kind, name) in enumerate(
         iterable=zip(
-            original_sig.arg_kinds,
-            original_sig.arg_names,
+            signature.arg_kinds,
+            signature.arg_names,
             strict=True,
         )
     ):
-        if skip_first_argument and index == 0:
-            new_arg_kinds.append(kind)
-            continue
-
-        if skip_second_argument and index == 1:
+        if index in skip_indices:
             new_arg_kinds.append(kind)
             continue
 
@@ -93,9 +120,100 @@ def _transform_signature(
             new_arg_kinds.append(kind)
 
     # See https://github.com/facebook/pyrefly/issues/1995.
-    return original_sig.copy_modified(
+    return signature.copy_modified(
         arg_kinds=new_arg_kinds,  # pyrefly: ignore[bad-argument-type]
     )
+
+
+def _transform_function_like(
+    *,
+    signature: FunctionLike,
+    fullname: str,
+    ignore_names: list[str],
+    skip_bound_argument: bool,
+) -> FunctionLike:
+    """Transform positional arguments in any function-like type."""
+    if isinstance(signature, CallableType):
+        return _transform_callable_type(
+            signature=signature,
+            fullname=fullname,
+            ignore_names=ignore_names,
+            skip_bound_argument=skip_bound_argument,
+        )
+
+    overloaded = cast("Overloaded", signature)
+    return Overloaded(
+        items=[
+            _transform_callable_type(
+                signature=item,
+                fullname=fullname,
+                ignore_names=ignore_names,
+                skip_bound_argument=skip_bound_argument,
+            )
+            for item in overloaded.items
+        ],
+    )
+
+
+def _transform_type(
+    *,
+    typ: Type | None,
+    fullname: str,
+    ignore_names: list[str],
+    skip_bound_argument: bool,
+) -> ProperType | None:
+    """Transform positional arguments in a method type."""
+    if typ is None:
+        return None
+
+    proper_type = get_proper_type(typ=typ)
+    return _transform_function_like(
+        signature=cast("FunctionLike", proper_type),
+        fullname=fullname,
+        ignore_names=ignore_names,
+        skip_bound_argument=skip_bound_argument,
+    )
+
+
+def _transform_base_method_signatures(
+    ctx: ClassDefContext,
+    *,
+    ignore_names: list[str],
+) -> None:
+    """Transform method definitions used by ``super()`` member access."""
+    for info in ctx.cls.info.mro[1:]:
+        _transform_type_info_methods(type_info=info, ignore_names=ignore_names)
+
+
+def _transform_type_info_methods(
+    *,
+    type_info: TypeInfo,
+    ignore_names: list[str],
+) -> None:
+    """Transform methods on a type info in place."""
+    for symbol in type_info.names.values():
+        node = symbol.node
+
+        if isinstance(node, (FuncDef, OverloadedFuncDef)):
+            node.type = _transform_type(
+                typ=node.type,
+                fullname=node.fullname,
+                ignore_names=ignore_names,
+                skip_bound_argument=node.has_self_or_cls_argument,
+            )
+        elif isinstance(node, Decorator):
+            node.func.type = _transform_type(
+                typ=node.func.type,
+                fullname=node.fullname,
+                ignore_names=ignore_names,
+                skip_bound_argument=node.func.has_self_or_cls_argument,
+            )
+            node.var.type = _transform_type(
+                typ=node.var.type,
+                fullname=node.fullname,
+                ignore_names=ignore_names,
+                skip_bound_argument=node.func.has_self_or_cls_argument,
+            )
 
 
 class KeywordOnlyPlugin(Plugin):
@@ -172,6 +290,17 @@ class KeywordOnlyPlugin(Plugin):
             fullname=fullname,
             ignore_names=self._ignore_names,
             debug=self._debug,
+        )
+
+    def get_base_class_hook(
+        self,
+        fullname: str,
+    ) -> Callable[[ClassDefContext], None] | None:
+        """Transform base methods used by ``super()`` member access."""
+        del fullname
+        return partial(
+            _transform_base_method_signatures,
+            ignore_names=self._ignore_names,
         )
 
 
