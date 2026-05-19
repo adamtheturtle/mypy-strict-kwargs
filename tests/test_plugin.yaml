@@ -111,6 +111,35 @@
   out: |-
     main:7: error: Too many positional arguments for "method" of "C"  [misc]
 
+- case: super_method
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super().method(1)
+  out: |-
+    main:6: error: Too many positional arguments for "method" of "B"  [misc]
+
+- case: super_method_ignore_name
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+
+    [mypy_strict_kwargs]
+    ignore_names = main.B.method
+  main: |-
+    class B:
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super().method(1)
+
 - case: callable_class_as_decorator
   mypy_config: |
     [mypy]
