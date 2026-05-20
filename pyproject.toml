@@ -69,7 +69,7 @@ optional-dependencies.dev = [
     "yamlfix==1.19.1",
     "zizmor==1.25.2",
 ]
-optional-dependencies.release = [ "check-wheel-contents==0.6.3" ]
+optional-dependencies.release = [ "check-wheel-contents==0.6.3", "towncrier==25.8.0" ]
 urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
 urls.Source = "https://github.com/adamtheturtle/mypy-strict-kwargs"
 entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plugin"
