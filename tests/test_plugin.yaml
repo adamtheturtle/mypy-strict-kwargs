@@ -153,6 +153,25 @@
     class C(B):
         pass
 
+- case: inherited_no_type_check_decorated_method
+  disable_cache: true
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import no_type_check
+
+    class B:
+        @no_type_check
+        def data(self, a):
+            pass
+
+    class C(B):
+        pass
+
+    C().data(1)
+    C().data("x")
+
 - case: callable_class_as_decorator
   mypy_config: |
     [mypy]
