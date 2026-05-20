@@ -336,6 +336,163 @@
   out: |-
     main:9: error: Too many positional arguments for "method" of "A"  [misc]
 
+- case: class_method_traversal_collects_calls
+  disable_cache: true
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from collections.abc import Iterator
+    from contextlib import contextmanager
+    from typing import Generic, TypeVar, assert_type, cast, overload
+
+    T = TypeVar("T")
+
+    def cond() -> bool:
+        return True
+
+    def one() -> int:
+        return 0
+
+    def two(x: int) -> int:
+        return x
+
+    def items() -> list[int]:
+        return []
+
+    def gen() -> Iterator[int]:
+        return iter([])
+
+    @contextmanager
+    def cm() -> Iterator[None]:
+        yield
+
+    async def aio() -> int:
+        return 0
+
+    def class_decorator(cls: type) -> type:
+        return cls
+
+    class B:
+        def m(self) -> None: ...
+
+    class C(B):
+        @overload
+        def overloaded(self, x: int) -> int: ...
+
+        @overload
+        def overloaded(self, x: str) -> str: ...
+
+        def overloaded(self, x: int | str) -> int | str:
+            return one()
+
+        def exercise(self) -> int:
+            @class_decorator
+            class Local(B, Generic[T], metaclass=type):
+                pass
+
+            while cond():
+                one()
+            else:
+                two(x=0)
+            while False:
+                one()
+            for _ in items():
+                one()
+            else:
+                two(x=0)
+            for _ in items():
+                one()
+            if cond():
+                one()
+            else:
+                two(x=0)
+            try:
+                one()
+            except OSError as error:
+                two(x=0)
+                raise ValueError from error
+            except:
+                two(x=0)
+                raise
+            try:
+                one()
+            except OSError:
+                two(x=0)
+            else:
+                one()
+            finally:
+                two(x=0)
+            with cm():
+                one()
+            with cm() as _:
+                one()
+            _ = cast(int, one())
+            assert_type(one(), int)
+            _ = f"{one():d}"
+            match one():
+                case 0 | 1:
+                    one()
+                case {"k": v}:
+                    one()
+                case [a, *rest]:
+                    one()
+                case _ as captured:
+                    one()
+                case 0 if cond():
+                    two(x=0)
+                case _:
+                    one()
+            assert cond()
+            assert False, one()
+            _ = f"plain"
+            _ = f"prefix{one()}suffix"
+            _ = f"{one()}"
+            scratch = items()
+            del scratch
+            x = one() + two(x=0)
+            x += one()
+            _ = not one()
+            _ = items()[0]
+            _ = items()[one():1]
+            _ = items()[:1]
+            _ = items()[::1]
+            _ = (y := one())
+            _ = lambda: one()
+            _ = one() if cond() else two(x=0)
+            _ = [one() for _ in items()]
+            _ = {one(): two(x=0)}
+            _ = {**{one(): two(x=0)}}
+            _ = {one()}
+            _ = {i for i in items() if one()}
+            _ = (one() for _ in items())
+            _ = {i: two(x=i) for i in items() if one()}
+            raise ValueError(str(one()))
+            return two(x=x)
+
+        def bare_return(self) -> None:
+            return
+
+        async def awaiter(self) -> None:
+            await aio()
+
+        def gen_from(self) -> Iterator[int]:
+            yield from gen()
+
+        def generator(self) -> Iterator[int | None]:
+            yield None
+            yield one()
+
+        def bare_yield(self) -> Iterator[None]:
+            yield
+
+        def defaulted(self, limit: int = one()) -> None:
+            del limit
+
+    @class_decorator
+    class D(B, metaclass=type):
+        pass
+
 - case: inherited_methods_preserve_protocol_compatibility
   mypy_config: |
     [mypy]
