@@ -6,7 +6,6 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import cast
 
 from mypy.errorcodes import MISC
 from mypy.nodes import (
@@ -236,15 +235,11 @@ def _iter_child_nodes(node: Node) -> list[Node]:
         if not hasattr(node, attr_name):
             continue
 
-        value: object = getattr(node, attr_name)
+        value: object = object.__getattribute__(node, attr_name)
         if isinstance(value, Node):
             children.append(value)
         elif isinstance(value, (list, tuple)):
-            children.extend(
-                item
-                for item in cast("list[object] | tuple[object, ...]", value)
-                if isinstance(item, Node)
-            )
+            children.extend(item for item in value if isinstance(item, Node))
 
     return children
 
