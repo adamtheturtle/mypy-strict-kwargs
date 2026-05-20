@@ -70,7 +70,6 @@ from mypy.patterns import (
     OrPattern,
     Pattern,
     SequencePattern,
-    SingletonPattern,
     StarredPattern,
     ValuePattern,
 )
@@ -87,7 +86,6 @@ _CollectablePattern: TypeAlias = (
     AsPattern
     | OrPattern
     | ValuePattern
-    | SingletonPattern
     | SequencePattern
     | StarredPattern
     | MappingPattern
@@ -626,7 +624,6 @@ def _collect_call_exprs_from_pattern(
             AsPattern()
             | OrPattern()
             | ValuePattern()
-            | SingletonPattern()
             | SequencePattern()
             | StarredPattern()
             | MappingPattern()
@@ -660,8 +657,6 @@ def _collect_call_exprs_from_collectable_pattern(
         case StarredPattern(capture=capture):
             if capture is not None:  # pragma: no branch
                 _collect_call_exprs(capture, calls)
-        case SingletonPattern():
-            pass
         case MappingPattern(keys=keys, values=values, rest=rest):
             _collect_call_exprs_from_mapping_pattern(
                 keys=keys,

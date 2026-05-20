@@ -323,7 +323,6 @@ addopts = [ "--mypy-same-process" ]
 run.branch = true
 report.exclude_also = [
     "case _ as unreachable:\n\\s*assert_never\\(",
-    "def _collect_call_exprs_from_pattern\\(",
     "if TYPE_CHECKING:",
 ]
 report.show_missing = true
