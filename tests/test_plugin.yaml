@@ -445,6 +445,11 @@
                     two(x=0)
                 case _:
                     one()
+            match object():
+                case None:
+                    one()
+                case _:
+                    two(x=0)
             assert cond()
             assert False, one()
             _ = f"plain"

@@ -6,6 +6,7 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import assert_never
 
 from mypy.errorcodes import MISC
 from mypy.nodes import (
@@ -39,7 +40,6 @@ from mypy.nodes import (
     ListExpr,
     MatchStmt,
     MemberExpr,
-    Node,
     OperatorAssignmentStmt,
     OpExpr,
     OverloadedFuncDef,
@@ -70,6 +70,7 @@ from mypy.patterns import (
     OrPattern,
     Pattern,
     SequencePattern,
+    SingletonPattern,
     StarredPattern,
     ValuePattern,
 )
@@ -80,6 +81,8 @@ from mypy.plugin import (
     Plugin,
 )
 from mypy.types import CallableType, FunctionLike
+
+_CallExprContainer = Expression | Statement
 
 
 def _preserved_positional_argument_count(fullname: str) -> int:
@@ -254,7 +257,11 @@ def _super_call_disallows_positional_argument(
     )
 
 
-def _collect_call_exprs(item: object, calls: list[CallExpr], /) -> None:
+def _collect_call_exprs(
+    item: _CallExprContainer,
+    calls: list[CallExpr],
+    /,
+) -> None:
     """Collect call expressions from a syntax-tree node or expression."""
     match item:
         case CallExpr():
@@ -264,14 +271,12 @@ def _collect_call_exprs(item: object, calls: list[CallExpr], /) -> None:
                 _collect_call_exprs(argument, calls)
             if item.analyzed is not None:  # pragma: no cover
                 _collect_call_exprs(item.analyzed, calls)
-        case Pattern() as pattern:
-            _collect_call_exprs_from_pattern(pattern, calls)
         case Statement() as statement:
             _collect_call_exprs_from_statement(statement, calls)
         case Expression() as expression:
             _collect_call_exprs_from_expression(expression, calls)
-        case _:  # pragma: no cover
-            pass
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
@@ -374,7 +379,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 bodies,
                 strict=True,
             ):
-                _collect_call_exprs(pattern, calls)
+                _collect_call_exprs_from_pattern(pattern, calls)
                 if guard is not None:
                     _collect_call_exprs(guard, calls)
                 _collect_call_exprs(body, calls)
@@ -480,7 +485,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                         _collect_call_exprs(expression, calls)
                         if format_expr is not None:
                             _collect_call_exprs(format_expr, calls)
-                    case _ as literal:
+                    case Expression() as literal:
                         _collect_call_exprs(literal, calls)
         case SetExpr(items=items):
             for item in items:
@@ -606,6 +611,19 @@ def _collect_call_exprs_from_pattern(
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
+    assert isinstance(  # noqa: S101
+        pattern,
+        (
+            AsPattern,
+            OrPattern,
+            ValuePattern,
+            SingletonPattern,
+            SequencePattern,
+            StarredPattern,
+            MappingPattern,
+            ClassPattern,
+        ),
+    )
     match pattern:
         case AsPattern(pattern=inner_pattern, name=name):
             _collect_call_exprs_from_as_pattern(
@@ -620,6 +638,8 @@ def _collect_call_exprs_from_pattern(
         case StarredPattern(capture=capture):
             if capture is not None:  # pragma: no branch
                 _collect_call_exprs(capture, calls)
+        case SingletonPattern():
+            pass
         case MappingPattern(keys=keys, values=values, rest=rest):
             _collect_call_exprs_from_mapping_pattern(
                 keys=keys,
@@ -638,11 +658,11 @@ def _collect_call_exprs_from_pattern(
                 keyword_values=keyword_values,
                 calls=calls,
             )
-        case _:  # pragma: no cover
-            pass
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
-def _iter_call_exprs(node: Node, /) -> list[CallExpr]:
+def _iter_call_exprs(node: _CallExprContainer, /) -> list[CallExpr]:
     """Return call expressions contained in a node."""
     calls: list[CallExpr] = []
     _collect_call_exprs(node, calls)
