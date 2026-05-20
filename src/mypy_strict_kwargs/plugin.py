@@ -6,7 +6,7 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import assert_never
+from typing import TypeAlias, TypeGuard, assert_never
 
 from mypy.errorcodes import MISC
 from mypy.nodes import (
@@ -83,6 +83,36 @@ from mypy.plugin import (
 from mypy.types import CallableType, FunctionLike
 
 _CallExprContainer = Expression | Statement
+_CollectablePattern: TypeAlias = (
+    AsPattern
+    | OrPattern
+    | ValuePattern
+    | SingletonPattern
+    | SequencePattern
+    | StarredPattern
+    | MappingPattern
+    | ClassPattern
+)
+
+
+def _is_collectable_pattern(
+    pattern: Pattern,
+    /,
+) -> TypeGuard[_CollectablePattern]:
+    """Return whether a match pattern can contain call expressions."""
+    return isinstance(
+        pattern,
+        (
+            AsPattern,
+            OrPattern,
+            ValuePattern,
+            SingletonPattern,
+            SequencePattern,
+            StarredPattern,
+            MappingPattern,
+            ClassPattern,
+        ),
+    )
 
 
 def _preserved_positional_argument_count(fullname: str) -> int:
@@ -611,19 +641,10 @@ def _collect_call_exprs_from_pattern(
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
-    assert isinstance(  # noqa: S101
-        pattern,
-        (
-            AsPattern,
-            OrPattern,
-            ValuePattern,
-            SingletonPattern,
-            SequencePattern,
-            StarredPattern,
-            MappingPattern,
-            ClassPattern,
-        ),
-    )
+    if not _is_collectable_pattern(pattern):
+        msg = f"Unsupported match pattern: {type(pattern).__qualname__}"
+        raise TypeError(msg)
+
     match pattern:
         case AsPattern(pattern=inner_pattern, name=name):
             _collect_call_exprs_from_as_pattern(
