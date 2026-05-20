@@ -140,6 +140,41 @@
         def method(self, a: int) -> None:
             super().method(1)
 
+- case: inherited_methods_preserve_protocol_compatibility
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import Protocol
+
+    class P(Protocol):
+        def method(self, a: int) -> None: ...
+
+        def other_method(
+            self,
+            a: str,
+            b: str,
+            c: str,
+        ) -> str: ...
+
+    class B:
+        def method(self, a: int) -> None: ...
+
+        def other_method(
+            self,
+            a: str,
+            b: str,
+            c: str,
+        ) -> str:
+            return a + b + c
+
+    class C(B):
+        pass
+
+    def func(c: P) -> None: ...
+
+    func(c=C())
+
 - case: inherited_property
   mypy_config: |
     [mypy]
