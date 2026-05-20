@@ -6,19 +6,73 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import cast  # noqa: TID251
 
 from mypy.errorcodes import MISC
 from mypy.nodes import (
+    REVEAL_TYPE,
     ArgKind,
+    AssertStmt,
+    AssertTypeExpr,
+    AssignmentExpr,
+    AssignmentStmt,
+    AwaitExpr,
+    Block,
     CallExpr,
+    CastExpr,
+    ClassDef,
+    ComparisonExpr,
+    ConditionalExpr,
     Decorator,
+    DelStmt,
+    DictExpr,
+    DictionaryComprehension,
+    Expression,
+    ExpressionStmt,
+    ForStmt,
     FuncDef,
+    FuncItem,
+    GeneratorExpr,
+    IfStmt,
+    IndexExpr,
+    LambdaExpr,
+    ListComprehension,
+    ListExpr,
+    MatchStmt,
+    MemberExpr,
     Node,
+    OperatorAssignmentStmt,
+    OpExpr,
     OverloadedFuncDef,
+    RaiseStmt,
+    ReturnStmt,
+    RevealExpr,
+    SetComprehension,
+    SetExpr,
+    SliceExpr,
+    StarExpr,
+    Statement,
     SuperExpr,
+    TemplateStrExpr,
+    TryStmt,
+    TupleExpr,
+    TypeApplication,
+    UnaryExpr,
+    WhileStmt,
+    WithStmt,
+    YieldExpr,
+    YieldFromExpr,
 )
 from mypy.options import Options
+from mypy.patterns import (
+    AsPattern,
+    ClassPattern,
+    MappingPattern,
+    OrPattern,
+    Pattern,
+    SequencePattern,
+    StarredPattern,
+    ValuePattern,
+)
 from mypy.plugin import (
     ClassDefContext,
     FunctionSigContext,
@@ -26,33 +80,6 @@ from mypy.plugin import (
     Plugin,
 )
 from mypy.types import CallableType, FunctionLike
-
-_AST_CHILD_ATTRS = frozenset(
-    {
-        "analyzed",
-        "args",
-        "base",
-        "body",
-        "callee",
-        "condition",
-        "defs",
-        "else_body",
-        "expr",
-        "expressions",
-        "if_expr",
-        "index",
-        "indices",
-        "items",
-        "left",
-        "lvalues",
-        "op",
-        "operands",
-        "right",
-        "rvalue",
-        "value",
-        "values",
-    },
-)
 
 
 def _preserved_positional_argument_count(fullname: str) -> int:
@@ -227,41 +254,398 @@ def _super_call_disallows_positional_argument(
     )
 
 
-def _iter_child_nodes(node: Node) -> list[Node]:
-    """Return syntax-tree child nodes relevant to call-expression
-    traversal.
-    """
-    children: list[Node] = []
-    for attr_name in _AST_CHILD_ATTRS:
-        if not hasattr(node, attr_name):  # pylint: disable=bad-builtin
-            continue
+def _collect_call_exprs(item: object, calls: list[CallExpr], /) -> None:
+    """Collect call expressions from a syntax-tree node or expression."""
+    match item:
+        case CallExpr():
+            calls.append(item)
+            _collect_call_exprs(item.callee, calls)
+            for argument in item.args:
+                _collect_call_exprs(argument, calls)
+            if item.analyzed is not None:  # pragma: no cover
+                _collect_call_exprs(item.analyzed, calls)
+        case Pattern() as pattern:
+            _collect_call_exprs_from_pattern(pattern, calls)
+        case Statement() as statement:
+            _collect_call_exprs_from_statement(statement, calls)
+        case Expression() as expression:
+            _collect_call_exprs_from_expression(expression, calls)
+        case _:  # pragma: no cover
+            pass
 
-        value: object = getattr(node, attr_name)  # pylint: disable=bad-builtin
-        if isinstance(value, Node):
-            children.append(value)
-        elif isinstance(value, (list, tuple)):
-            children.extend(
-                item
-                for item in cast("list[object] | tuple[object, ...]", value)
-                if isinstance(item, Node)
+
+def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
+    statement: Statement,
+    calls: list[CallExpr],
+    /,
+) -> None:
+    """Collect call expressions from a statement."""
+    match statement:
+        case ExpressionStmt(expr=expr):
+            _collect_call_exprs(expr, calls)
+        case AssignmentStmt(rvalue=rvalue, lvalues=lvalues):
+            _collect_call_exprs(rvalue, calls)
+            for lvalue in lvalues:
+                _collect_call_exprs(lvalue, calls)
+        case OperatorAssignmentStmt(rvalue=rvalue, lvalue=lvalue):
+            _collect_call_exprs(rvalue, calls)
+            _collect_call_exprs(lvalue, calls)
+        case WhileStmt(expr=expr, body=body, else_body=else_body):
+            _collect_call_exprs(expr, calls)
+            _collect_call_exprs(body, calls)
+            if else_body is not None:
+                _collect_call_exprs(else_body, calls)
+        case ForStmt(
+            index=index,
+            expr=expr,
+            body=body,
+            else_body=else_body,
+        ):
+            _collect_call_exprs(index, calls)
+            _collect_call_exprs(expr, calls)
+            _collect_call_exprs(body, calls)
+            if else_body is not None:
+                _collect_call_exprs(else_body, calls)
+        case ReturnStmt(expr=expr):
+            if expr is not None:
+                _collect_call_exprs(expr, calls)
+        case AssertStmt(expr=expr, msg=msg):
+            _collect_call_exprs(expr, calls)
+            if msg is not None:
+                _collect_call_exprs(msg, calls)
+        case DelStmt(expr=expr):
+            _collect_call_exprs(expr, calls)
+        case IfStmt(expr=conditions, body=body, else_body=else_body):
+            for condition in conditions:
+                _collect_call_exprs(condition, calls)
+            for block in body:
+                _collect_call_exprs(block, calls)
+            if else_body is not None:
+                _collect_call_exprs(else_body, calls)
+        case RaiseStmt(expr=expr, from_expr=from_expr):
+            if expr is not None:
+                _collect_call_exprs(expr, calls)
+            if from_expr is not None:
+                _collect_call_exprs(from_expr, calls)
+        case TryStmt(
+            body=body,
+            types=handler_types,
+            handlers=handlers,
+            vars=variables,
+            else_body=else_body,
+            finally_body=finally_body,
+        ):
+            _collect_call_exprs(body, calls)
+            for handler_type, handler in zip(
+                handler_types,
+                handlers,
+                strict=True,
+            ):
+                if handler_type is not None:
+                    _collect_call_exprs(handler_type, calls)
+                _collect_call_exprs(handler, calls)
+            for variable in variables:
+                if variable is not None:
+                    _collect_call_exprs(variable, calls)
+            if else_body is not None:
+                _collect_call_exprs(else_body, calls)
+            if finally_body is not None:
+                _collect_call_exprs(finally_body, calls)
+        case WithStmt(expr=expressions, target=targets, body=body):
+            for expression, target in zip(
+                expressions,
+                targets,
+                strict=True,
+            ):
+                _collect_call_exprs(expression, calls)
+                if target is not None:
+                    _collect_call_exprs(target, calls)
+            _collect_call_exprs(body, calls)
+        case MatchStmt(
+            subject=subject,
+            patterns=patterns,
+            guards=guards,
+            bodies=bodies,
+        ):
+            _collect_call_exprs(subject, calls)
+            for pattern, guard, body in zip(
+                patterns,
+                guards,
+                bodies,
+                strict=True,
+            ):
+                _collect_call_exprs(pattern, calls)
+                if guard is not None:
+                    _collect_call_exprs(guard, calls)
+                _collect_call_exprs(body, calls)
+        case Block(body=body):
+            for body_statement in body:
+                _collect_call_exprs(body_statement, calls)
+        case FuncDef():
+            _collect_call_exprs_from_func_item(statement, calls)
+        case OverloadedFuncDef(items=items):
+            for overload_item in items:
+                _collect_call_exprs(overload_item, calls)
+        case Decorator(func=func, decorators=decorators):
+            _collect_call_exprs(func, calls)
+            for decorator in decorators:
+                _collect_call_exprs(decorator, calls)
+        case ClassDef(
+            decorators=decorators,
+            base_type_exprs=base_type_exprs,
+            metaclass=metaclass,
+            keywords=keywords,
+            defs=defs,
+        ):
+            for decorator in decorators:
+                _collect_call_exprs(decorator, calls)
+            for base_type_expression in base_type_exprs:
+                _collect_call_exprs(base_type_expression, calls)
+            if metaclass is not None:
+                _collect_call_exprs(metaclass, calls)
+            for keyword_expression in keywords.values():
+                _collect_call_exprs(keyword_expression, calls)
+            _collect_call_exprs(defs, calls)
+        case _:
+            pass
+
+
+def _collect_call_exprs_from_func_item(
+    func_item: FuncItem,
+    calls: list[CallExpr],
+    /,
+) -> None:
+    """Collect call expressions from a function or lambda."""
+    for argument in func_item.arguments:
+        if argument.initializer is not None:
+            _collect_call_exprs(argument.initializer, calls)
+    _collect_call_exprs(func_item.body, calls)
+
+
+def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
+    expression: Expression,
+    calls: list[CallExpr],
+    /,
+) -> None:
+    """Collect call expressions from an expression."""
+    match expression:
+        case MemberExpr(expr=expr) | YieldFromExpr(expr=expr):
+            _collect_call_exprs(expr, calls)
+        case YieldExpr(expr=expr):
+            if expr is not None:
+                _collect_call_exprs(expr, calls)
+        case OpExpr(left=left, right=right) as op_expr:
+            _collect_call_exprs(left, calls)
+            _collect_call_exprs(right, calls)
+            if op_expr.analyzed is not None:  # pragma: no cover
+                _collect_call_exprs(op_expr.analyzed, calls)
+        case ComparisonExpr(operands=operands):
+            for operand in operands:
+                _collect_call_exprs(operand, calls)
+        case SliceExpr(
+            begin_index=begin_index,
+            end_index=end_index,
+            stride=stride,
+        ):
+            if begin_index is not None:
+                _collect_call_exprs(begin_index, calls)
+            if end_index is not None:
+                _collect_call_exprs(end_index, calls)
+            if stride is not None:
+                _collect_call_exprs(stride, calls)
+        case (
+            CastExpr(expr=expr) | AssertTypeExpr(expr=expr)
+        ):  # pragma: no cover
+            _collect_call_exprs(expr, calls)
+        case RevealExpr(kind=kind, expr=expr):  # pragma: no cover
+            if kind == REVEAL_TYPE and expr is not None:
+                _collect_call_exprs(expr, calls)
+        case AssignmentExpr(target=target, value=value):
+            _collect_call_exprs(target, calls)
+            _collect_call_exprs(value, calls)
+        case UnaryExpr(expr=expr):
+            _collect_call_exprs(expr, calls)
+        case ListExpr(items=items) | TupleExpr(items=items):
+            for item in items:
+                _collect_call_exprs(item, calls)
+        case DictExpr(items=items):
+            for key, value in items:
+                if key is not None:
+                    _collect_call_exprs(key, calls)
+                _collect_call_exprs(value, calls)
+        case TemplateStrExpr(items=template_items):  # pragma: no cover
+            for template_item in template_items:
+                match template_item:
+                    case (expression, _, _, format_expr):
+                        _collect_call_exprs(expression, calls)
+                        if format_expr is not None:
+                            _collect_call_exprs(format_expr, calls)
+                    case _ as literal:
+                        _collect_call_exprs(literal, calls)
+        case SetExpr(items=items):
+            for item in items:
+                _collect_call_exprs(item, calls)
+        case IndexExpr(base=base, index=index) as index_expr:
+            _collect_call_exprs(base, calls)
+            _collect_call_exprs(index, calls)
+            if index_expr.analyzed is not None:  # pragma: no cover
+                _collect_call_exprs(index_expr.analyzed, calls)
+        case GeneratorExpr(
+            indices=indices,
+            sequences=sequences,
+            condlists=condlists,
+            left_expr=left_expr,
+        ):
+            for index, sequence, conditions in zip(
+                indices,
+                sequences,
+                condlists,
+                strict=True,
+            ):
+                _collect_call_exprs(sequence, calls)
+                _collect_call_exprs(index, calls)
+                for condition in conditions:
+                    _collect_call_exprs(condition, calls)
+            _collect_call_exprs(left_expr, calls)
+        case DictionaryComprehension(
+            indices=indices,
+            sequences=sequences,
+            condlists=condlists,
+            key=key,
+            value=value,
+        ):
+            for index, sequence, conditions in zip(
+                indices,
+                sequences,
+                condlists,
+                strict=True,
+            ):
+                _collect_call_exprs(sequence, calls)
+                _collect_call_exprs(index, calls)
+                for condition in conditions:
+                    _collect_call_exprs(condition, calls)
+            _collect_call_exprs(key, calls)
+            _collect_call_exprs(value, calls)
+        case (
+            ListComprehension(generator=generator)
+            | SetComprehension(
+                generator=generator,
             )
+        ):
+            _collect_call_exprs(generator, calls)
+        case ConditionalExpr(cond=cond, if_expr=if_expr, else_expr=else_expr):
+            _collect_call_exprs(cond, calls)
+            _collect_call_exprs(if_expr, calls)
+            _collect_call_exprs(else_expr, calls)
+        case TypeApplication(expr=expr):  # pragma: no cover
+            _collect_call_exprs(expr, calls)
+        case LambdaExpr():
+            _collect_call_exprs_from_func_item(expression, calls)
+        case StarExpr(expr=expr) | AwaitExpr(expr=expr):
+            _collect_call_exprs(expr, calls)
+        case SuperExpr(call=call):
+            _collect_call_exprs(call, calls)
+        case _:
+            pass
 
-    return children
+
+def _collect_call_exprs_from_patterns(
+    patterns: list[Pattern],
+    calls: list[CallExpr],
+    /,
+) -> None:
+    """Collect call expressions from match patterns."""
+    for pattern in patterns:
+        _collect_call_exprs_from_pattern(pattern, calls)
 
 
-def _iter_call_exprs(node: Node) -> list[CallExpr]:
+def _collect_call_exprs_from_as_pattern(
+    *,
+    inner_pattern: Pattern | None,
+    name: Expression | None,
+    calls: list[CallExpr],
+) -> None:
+    """Collect call expressions from an as pattern."""
+    if inner_pattern is not None:
+        _collect_call_exprs_from_pattern(inner_pattern, calls)
+    if name is not None:
+        _collect_call_exprs(name, calls)
+
+
+def _collect_call_exprs_from_mapping_pattern(
+    *,
+    keys: list[Expression],
+    values: list[Pattern],
+    rest: Expression | None,
+    calls: list[CallExpr],
+) -> None:
+    """Collect call expressions from a mapping pattern."""
+    for key in keys:
+        _collect_call_exprs(key, calls)
+    _collect_call_exprs_from_patterns(values, calls)
+    if rest is not None:  # pragma: no cover
+        _collect_call_exprs(rest, calls)
+
+
+def _collect_call_exprs_from_class_pattern(
+    *,
+    class_ref: Expression,
+    positionals: list[Pattern],
+    keyword_values: list[Pattern],
+    calls: list[CallExpr],
+) -> None:
+    """Collect call expressions from a class pattern."""
+    _collect_call_exprs(class_ref, calls)
+    _collect_call_exprs_from_patterns(positionals, calls)
+    _collect_call_exprs_from_patterns(keyword_values, calls)
+
+
+def _collect_call_exprs_from_pattern(
+    pattern: Pattern,
+    calls: list[CallExpr],
+    /,
+) -> None:
+    """Collect call expressions from a match pattern."""
+    match pattern:
+        case AsPattern(pattern=inner_pattern, name=name):
+            _collect_call_exprs_from_as_pattern(
+                inner_pattern=inner_pattern,
+                name=name,
+                calls=calls,
+            )
+        case OrPattern(patterns=patterns) | SequencePattern(patterns=patterns):
+            _collect_call_exprs_from_patterns(patterns, calls)
+        case ValuePattern(expr=expr):
+            _collect_call_exprs(expr, calls)
+        case StarredPattern(capture=capture):
+            if capture is not None:  # pragma: no branch
+                _collect_call_exprs(capture, calls)
+        case MappingPattern(keys=keys, values=values, rest=rest):
+            _collect_call_exprs_from_mapping_pattern(
+                keys=keys,
+                values=values,
+                rest=rest,
+                calls=calls,
+            )
+        case ClassPattern(  # pragma: no cover
+            class_ref=class_ref,
+            positionals=positionals,
+            keyword_values=keyword_values,
+        ):
+            _collect_call_exprs_from_class_pattern(
+                class_ref=class_ref,
+                positionals=positionals,
+                keyword_values=keyword_values,
+                calls=calls,
+            )
+        case _:  # pragma: no cover
+            pass
+
+
+def _iter_call_exprs(node: Node, /) -> list[CallExpr]:
     """Return call expressions contained in a node."""
     calls: list[CallExpr] = []
-    stack = [node]
-
-    while stack:
-        current = stack.pop()
-
-        if isinstance(current, CallExpr):
-            calls.append(current)
-
-        stack.extend(_iter_child_nodes(node=current))
-
+    _collect_call_exprs(node, calls)
     return calls
 
 
@@ -321,7 +705,7 @@ def _check_super_method_calls(
     ignore_names: list[str],
 ) -> None:
     """Check ``super()`` method calls in a class body."""
-    for expr in _iter_call_exprs(node=ctx.cls.defs):
+    for expr in _iter_call_exprs(ctx.cls.defs):
         method_name = _super_method_name(expr=expr)
         if method_name is None:
             continue
