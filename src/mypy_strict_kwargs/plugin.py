@@ -25,7 +25,7 @@ from mypy.plugin import (
     MethodSigContext,
     Plugin,
 )
-from mypy.types import CallableType, FunctionLike, Overloaded
+from mypy.types import CallableType, FunctionLike
 
 _AST_CHILD_ATTRS = frozenset(
     {
@@ -154,18 +154,13 @@ def _transform_callable_type(
     )
 
 
-def _callable_items(signature: FunctionLike) -> list[CallableType]:
-    """Return the callable items in a function-like signature."""
-    if isinstance(signature, CallableType):
-        return [signature]
-    return list(cast(Overloaded, signature).items)  # noqa: TC006
-
-
 def _super_method_name(expr: CallExpr) -> str | None:
     """Return the method name for a ``super().method(...)`` call."""
-    if isinstance(expr.callee, SuperExpr):
-        return expr.callee.name
-    return None
+    match expr.callee:
+        case SuperExpr(name=name):
+            return name
+        case _:
+            return None
 
 
 def _call_disallows_positional_argument(
@@ -217,6 +212,9 @@ def _super_call_disallows_positional_argument(
     """Return whether every overload rejects positional super
     arguments.
     """
+    callable_items = (
+        [signature] if isinstance(signature, CallableType) else signature.items
+    )
     return all(
         _call_disallows_positional_argument(
             call=call,
@@ -225,7 +223,7 @@ def _super_call_disallows_positional_argument(
             ignore_names=ignore_names,
             skip_bound_argument=skip_bound_argument,
         )
-        for callable_item in _callable_items(signature=signature)
+        for callable_item in callable_items
     )
 
 
@@ -281,16 +279,17 @@ def _check_super_method_call(
             continue
 
         node = symbol.node
-        if isinstance(node, (FuncDef, OverloadedFuncDef)):
-            fullname = node.fullname
-            typ = node.type
-            skip_bound_argument = node.has_self_or_cls_argument
-        elif isinstance(node, Decorator):
-            fullname = node.fullname
-            typ = node.func.type
-            skip_bound_argument = node.func.has_self_or_cls_argument
-        else:
-            continue
+        match node:
+            case FuncDef() | OverloadedFuncDef():
+                fullname = node.fullname
+                typ = node.type
+                skip_bound_argument = node.has_self_or_cls_argument
+            case Decorator():
+                fullname = node.fullname
+                typ = node.func.type
+                skip_bound_argument = node.func.has_self_or_cls_argument
+            case _:
+                continue
 
         if fullname in ignore_names:
             return
