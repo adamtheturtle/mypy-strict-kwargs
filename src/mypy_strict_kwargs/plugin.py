@@ -549,7 +549,58 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             pass
 
 
-def _collect_call_exprs_from_pattern(  # noqa: C901, PLR0912
+def _collect_call_exprs_from_patterns(
+    patterns: list[Pattern],
+    calls: list[CallExpr],
+    /,
+) -> None:
+    """Collect call expressions from match patterns."""
+    for pattern in patterns:
+        _collect_call_exprs_from_pattern(pattern, calls)
+
+
+def _collect_call_exprs_from_as_pattern(
+    *,
+    inner_pattern: Pattern | None,
+    name: Expression | None,
+    calls: list[CallExpr],
+) -> None:
+    """Collect call expressions from an as pattern."""
+    if inner_pattern is not None:
+        _collect_call_exprs_from_pattern(inner_pattern, calls)
+    if name is not None:
+        _collect_call_exprs(name, calls)
+
+
+def _collect_call_exprs_from_mapping_pattern(
+    *,
+    keys: list[Expression],
+    values: list[Pattern],
+    rest: Expression | None,
+    calls: list[CallExpr],
+) -> None:
+    """Collect call expressions from a mapping pattern."""
+    for key in keys:
+        _collect_call_exprs(key, calls)
+    _collect_call_exprs_from_patterns(values, calls)
+    if rest is not None:  # pragma: no cover
+        _collect_call_exprs(rest, calls)
+
+
+def _collect_call_exprs_from_class_pattern(
+    *,
+    class_ref: Expression,
+    positionals: list[Pattern],
+    keyword_values: list[Pattern],
+    calls: list[CallExpr],
+) -> None:
+    """Collect call expressions from a class pattern."""
+    _collect_call_exprs(class_ref, calls)
+    _collect_call_exprs_from_patterns(positionals, calls)
+    _collect_call_exprs_from_patterns(keyword_values, calls)
+
+
+def _collect_call_exprs_from_pattern(
     pattern: Pattern,
     calls: list[CallExpr],
     /,
@@ -557,38 +608,36 @@ def _collect_call_exprs_from_pattern(  # noqa: C901, PLR0912
     """Collect call expressions from a match pattern."""
     match pattern:
         case AsPattern(pattern=inner_pattern, name=name):
-            if inner_pattern is not None:
-                _collect_call_exprs_from_pattern(inner_pattern, calls)
-            if name is not None:
-                _collect_call_exprs(name, calls)
-        case OrPattern(patterns=patterns):
-            for inner_pattern in patterns:
-                _collect_call_exprs_from_pattern(inner_pattern, calls)
+            _collect_call_exprs_from_as_pattern(
+                inner_pattern=inner_pattern,
+                name=name,
+                calls=calls,
+            )
+        case OrPattern(patterns=patterns) | SequencePattern(patterns=patterns):
+            _collect_call_exprs_from_patterns(patterns, calls)
         case ValuePattern(expr=expr):
             _collect_call_exprs(expr, calls)
-        case SequencePattern(patterns=patterns):
-            for inner_pattern in patterns:
-                _collect_call_exprs_from_pattern(inner_pattern, calls)
         case StarredPattern(capture=capture):
             if capture is not None:  # pragma: no branch
                 _collect_call_exprs(capture, calls)
         case MappingPattern(keys=keys, values=values, rest=rest):
-            for key in keys:
-                _collect_call_exprs(key, calls)
-            for value in values:
-                _collect_call_exprs_from_pattern(value, calls)
-            if rest is not None:  # pragma: no cover
-                _collect_call_exprs(rest, calls)
+            _collect_call_exprs_from_mapping_pattern(
+                keys=keys,
+                values=values,
+                rest=rest,
+                calls=calls,
+            )
         case ClassPattern(  # pragma: no cover
             class_ref=class_ref,
             positionals=positionals,
             keyword_values=keyword_values,
         ):
-            _collect_call_exprs(class_ref, calls)
-            for positional in positionals:
-                _collect_call_exprs_from_pattern(positional, calls)
-            for keyword_value in keyword_values:
-                _collect_call_exprs_from_pattern(keyword_value, calls)
+            _collect_call_exprs_from_class_pattern(
+                class_ref=class_ref,
+                positionals=positionals,
+                keyword_values=keyword_values,
+                calls=calls,
+            )
         case _:  # pragma: no cover
             pass
 
