@@ -328,8 +328,16 @@ report.show_missing = true
 
 [tool.mypy_strict_kwargs]
 ignore_names = [
-    # Internal helper; keep positional for TypeGuard narrowing.
-    "mypy_strict_kwargs.plugin._is_object_sequence",
+    # Internal AST traversal helpers and stdlib used inside plugin.py.
+    "mypy_strict_kwargs.plugin._collect_call_exprs",
+    "mypy_strict_kwargs.plugin._collect_call_exprs_from_statement",
+    "mypy_strict_kwargs.plugin._collect_call_exprs_from_expression",
+    "mypy_strict_kwargs.plugin._collect_call_exprs_from_func_item",
+    "builtins.enumerate",
+    "builtins.isinstance",
+    "builtins.len",
+    "builtins.range",
+    "builtins.zip",
 ]
 
 [tool.pydocstringformatter]
