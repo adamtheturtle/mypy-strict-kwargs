@@ -14,8 +14,6 @@ from mypy.nodes import (
     CallExpr,
     Decorator,
     FuncDef,
-    MemberExpr,
-    NameExpr,
     Node,
     OverloadedFuncDef,
     SuperExpr,
@@ -160,34 +158,14 @@ def _callable_items(signature: FunctionLike) -> list[CallableType]:
     """Return the callable items in a function-like signature."""
     if isinstance(signature, CallableType):
         return [signature]
-    if isinstance(signature, Overloaded):
-        return list(signature.items)
-
-    raise TypeError(type(signature).__name__)
-
-
-def _is_super_expr(expr: SuperExpr | CallExpr) -> bool:
-    """Return whether an expression is ``super`` or ``super()``."""
-    if isinstance(expr, SuperExpr):
-        return True
-
-    callee = expr.callee
-    return isinstance(callee, NameExpr) and (
-        callee.fullname == "builtins.super" or callee.name == "super"
-    )
+    return list(cast(Overloaded, signature).items)  # noqa: TC006
 
 
 def _super_method_name(expr: CallExpr) -> str | None:
     """Return the method name for a ``super().method(...)`` call."""
     if isinstance(expr.callee, SuperExpr):
         return expr.callee.name
-    if not isinstance(expr.callee, MemberExpr):
-        return None
-    if not isinstance(expr.callee.expr, (CallExpr, SuperExpr)):
-        return None
-    if not _is_super_expr(expr=expr.callee.expr):
-        return None
-    return expr.callee.name
+    return None
 
 
 def _call_disallows_positional_argument(
@@ -276,15 +254,10 @@ def _iter_child_nodes(node: Node) -> list[Node]:
 def _iter_call_exprs(node: Node) -> list[CallExpr]:
     """Return call expressions contained in a node."""
     calls: list[CallExpr] = []
-    seen: set[int] = set()
     stack = [node]
 
     while stack:
         current = stack.pop()
-        current_id = id(current)
-        if current_id in seen:
-            continue
-        seen.add(current_id)
 
         if isinstance(current, CallExpr):
             calls.append(current)

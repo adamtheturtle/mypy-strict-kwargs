@@ -140,6 +140,202 @@
         def method(self, a: int) -> None:
             super().method(1)
 
+- case: super_method_overload
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  files:
+    - path: package/__init__.py
+    - path: package/base.pyi
+      content: |
+        from typing import overload
+
+        class B:
+            @overload
+            def method(self, a: int) -> int: ...
+            @overload
+            def method(self, a: str) -> str: ...
+  main: |-
+    from package.base import B
+
+    class C(B):
+        def call(self) -> int:
+            return super().method(1)
+  out: |-
+    main:5: error: Too many positional arguments for "method" of "B"  [misc]
+
+- case: super_method_explicit_super
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super(C, self).method(1)
+  out: |-
+    main:6: error: Too many positional arguments for "method" of "B"  [misc]
+
+- case: super_method_keyword_argument
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super().method(a=1)
+
+- case: super_method_positional_only_argument
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        def method(self, a: int, /) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super().method(1)
+
+- case: super_method_too_many_arguments
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        def method(self) -> None: ...
+
+    class C(B):
+        def method(self) -> None:
+            super().method(1)
+  out: |-
+    main:6: error: Too many arguments for "method" of "B"  [call-arg]
+
+- case: super_method_ignores_non_super_calls
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class D:
+        def method(self, a: int, /) -> None: ...
+
+    def func(a: int, /) -> None: ...
+
+    def factory() -> D:
+        return D()
+
+    class B:
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            func(1)
+            factory().method(1)
+
+- case: super_method_missing_base_method
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        pass
+
+    class C(B):
+        def method(self) -> None:
+            super().method()
+  out: |-
+    main:6: error: "method" undefined in superclass  [misc]
+
+- case: super_method_non_callable_base_member
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        method = 1
+
+    class C(B):
+        def call(self) -> None:
+            super().method()
+  out: |-
+    main:6: error: "int" not callable  [operator]
+
+- case: super_method_decorated_base_method
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import Callable, TypeVar
+
+    F = TypeVar("F", bound=Callable[..., object])
+
+    def deco(func: F) -> F:
+        return func
+
+    class B:
+        @deco
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super().method(1)
+  out: |-
+    main:14: error: Too many positional arguments for "method" of "B"  [misc]
+
+- case: super_method_staticmethod
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        @staticmethod
+        def method(a: int) -> None: ...
+
+    class C(B):
+        def call(self) -> None:
+            super().method(1)
+  out: |-
+    main:7: error: Too many positional arguments for "method" of "B"  [misc]
+
+- case: super_method_no_type_check_decorated_base_method
+  disable_cache: true
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import no_type_check
+
+    class B:
+        @no_type_check
+        def method(self, a):
+            pass
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super().method(1)
+
+- case: super_method_continues_past_positional_only_base
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class A:
+        def method(self, a: int) -> None: ...
+
+    class B:
+        def method(self, a: int, /) -> None: ...
+
+    class C(B, A):
+        def method(self, a: int) -> None:
+            super().method(1)
+  out: |-
+    main:9: error: Too many positional arguments for "method" of "A"  [misc]
+
 - case: inherited_methods_preserve_protocol_compatibility
   mypy_config: |
     [mypy]
