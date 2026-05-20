@@ -140,6 +140,19 @@
         def method(self, a: int) -> None:
             super().method(1)
 
+- case: inherited_property
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        @property
+        def data(self) -> bytes:
+            return b""
+
+    class C(B):
+        pass
+
 - case: callable_class_as_decorator
   mypy_config: |
     [mypy]

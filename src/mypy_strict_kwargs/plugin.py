@@ -167,8 +167,11 @@ def _transform_type(
         return None
 
     proper_type = get_proper_type(typ=typ)
+    if not isinstance(proper_type, FunctionLike):
+        return proper_type
+
     return _transform_function_like(
-        signature=cast("FunctionLike", proper_type),
+        signature=proper_type,
         fullname=fullname,
         ignore_names=ignore_names,
         skip_bound_argument=skip_bound_argument,
