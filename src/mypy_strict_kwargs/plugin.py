@@ -244,7 +244,7 @@ def _super_call_disallows_positional_argument(
     )
 
 
-def _collect_call_exprs(item: object, calls: list[CallExpr]) -> None:
+def _collect_call_exprs(item: object, calls: list[CallExpr], /) -> None:
     """Collect call expressions from a syntax-tree node or expression."""
     if isinstance(item, CallExpr):
         calls.append(item)
@@ -266,6 +266,7 @@ def _collect_call_exprs(item: object, calls: list[CallExpr]) -> None:
 def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
     statement: Statement,
     calls: list[CallExpr],
+    /,
 ) -> None:
     """Collect call expressions from a statement."""
     if isinstance(statement, ExpressionStmt):
@@ -311,10 +312,14 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             _collect_call_exprs(statement.from_expr, calls)
     elif isinstance(statement, TryStmt):
         _collect_call_exprs(statement.body, calls)
-        for index, handler_type in enumerate(statement.types):
+        for handler_type, handler in zip(
+            statement.types,
+            statement.handlers,
+            strict=True,
+        ):
             if handler_type is not None:
                 _collect_call_exprs(handler_type, calls)
-            _collect_call_exprs(statement.handlers[index], calls)
+            _collect_call_exprs(handler, calls)
         for variable in statement.vars:
             if variable is not None:
                 _collect_call_exprs(variable, calls)
@@ -323,9 +328,12 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
         if statement.finally_body is not None:
             _collect_call_exprs(statement.finally_body, calls)
     elif isinstance(statement, WithStmt):
-        for index, expression in enumerate(statement.expr):
+        for expression, target in zip(
+            statement.expr,
+            statement.target,
+            strict=True,
+        ):
             _collect_call_exprs(expression, calls)
-            target = statement.target[index]
             if target is not None:
                 _collect_call_exprs(target, calls)
         _collect_call_exprs(statement.body, calls)
@@ -372,6 +380,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
 def _collect_call_exprs_from_func_item(
     func_item: FuncItem,
     calls: list[CallExpr],
+    /,
 ) -> None:
     """Collect call expressions from a function or lambda."""
     for argument in func_item.arguments:
@@ -383,6 +392,7 @@ def _collect_call_exprs_from_func_item(
 def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
     expression: Expression,
     calls: list[CallExpr],
+    /,
 ) -> None:
     """Collect call expressions from an expression."""
     if isinstance(expression, (MemberExpr, YieldFromExpr)):
@@ -480,7 +490,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         _collect_call_exprs(expression.call, calls)
 
 
-def _iter_call_exprs(node: Node) -> list[CallExpr]:
+def _iter_call_exprs(node: Node, /) -> list[CallExpr]:
     """Return call expressions contained in a node."""
     calls: list[CallExpr] = []
     _collect_call_exprs(node, calls)
@@ -543,7 +553,7 @@ def _check_super_method_calls(
     ignore_names: list[str],
 ) -> None:
     """Check ``super()`` method calls in a class body."""
-    for expr in _iter_call_exprs(node=ctx.cls.defs):
+    for expr in _iter_call_exprs(ctx.cls.defs):
         method_name = _super_method_name(expr=expr)
         if method_name is None:
             continue
