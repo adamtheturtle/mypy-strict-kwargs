@@ -8,7 +8,16 @@ from functools import partial
 from pathlib import Path
 from typing import cast
 
-from mypy.nodes import ArgKind, Decorator, FuncDef, OverloadedFuncDef, TypeInfo
+from mypy.errorcodes import MISC
+from mypy.nodes import (
+    ArgKind,
+    CallExpr,
+    Decorator,
+    FuncDef,
+    Node,
+    OverloadedFuncDef,
+    SuperExpr,
+)
 from mypy.options import Options
 from mypy.plugin import (
     ClassDefContext,
@@ -16,13 +25,33 @@ from mypy.plugin import (
     MethodSigContext,
     Plugin,
 )
-from mypy.types import (
-    CallableType,
-    FunctionLike,
-    Overloaded,
-    ProperType,
-    Type,
-    get_proper_type,
+from mypy.types import CallableType, FunctionLike
+
+_AST_CHILD_ATTRS = frozenset(
+    {
+        "analyzed",
+        "args",
+        "base",
+        "body",
+        "callee",
+        "condition",
+        "defs",
+        "else_body",
+        "expr",
+        "expressions",
+        "if_expr",
+        "index",
+        "indices",
+        "items",
+        "left",
+        "lvalues",
+        "op",
+        "operands",
+        "right",
+        "rvalue",
+        "value",
+        "values",
+    },
 )
 
 
@@ -125,98 +154,183 @@ def _transform_callable_type(
     )
 
 
-def _transform_function_like(
+def _super_method_name(expr: CallExpr) -> str | None:
+    """Return the method name for a ``super().method(...)`` call."""
+    match expr.callee:
+        case SuperExpr(name=name):
+            return name
+        case _:
+            return None
+
+
+def _call_disallows_positional_argument(
     *,
-    signature: FunctionLike,
+    call: CallExpr,
+    signature: CallableType,
     fullname: str,
     ignore_names: list[str],
     skip_bound_argument: bool,
-) -> FunctionLike:
-    """Transform positional arguments in any function-like type."""
-    if isinstance(signature, CallableType):
-        return _transform_callable_type(
-            signature=signature,
-            fullname=fullname,
-            ignore_names=ignore_names,
-            skip_bound_argument=skip_bound_argument,
-        )
-
-    overloaded = cast("Overloaded", signature)
-    return Overloaded(
-        items=[
-            _transform_callable_type(
-                signature=item,
-                fullname=fullname,
-                ignore_names=ignore_names,
-                skip_bound_argument=skip_bound_argument,
-            )
-            for item in overloaded.items
-        ],
-    )
-
-
-def _transform_type(
-    *,
-    typ: Type | None,
-    fullname: str,
-    ignore_names: list[str],
-    skip_bound_argument: bool,
-) -> ProperType | None:
-    """Transform positional arguments in a method type."""
-    if typ is None:
-        return None
-
-    proper_type = get_proper_type(typ=typ)
-    if not isinstance(proper_type, FunctionLike):
-        return proper_type
-
-    return _transform_function_like(
-        signature=proper_type,
+) -> bool:
+    """Return whether a call passes a transformed argument by position."""
+    transformed = _transform_callable_type(
+        signature=signature,
         fullname=fullname,
         ignore_names=ignore_names,
         skip_bound_argument=skip_bound_argument,
     )
 
+    positional_argument_index = 0
+    for actual_arg_kind in call.arg_kinds:
+        if actual_arg_kind != ArgKind.ARG_POS:
+            continue
 
-def _transform_base_method_signatures(
+        formal_arg_index = positional_argument_index
+        if skip_bound_argument:
+            formal_arg_index += 1
+        positional_argument_index += 1
+
+        if formal_arg_index >= len(transformed.arg_kinds):
+            return False
+
+        if transformed.arg_kinds[formal_arg_index] in {
+            ArgKind.ARG_NAMED,
+            ArgKind.ARG_NAMED_OPT,
+        }:
+            return True
+
+    return False
+
+
+def _super_call_disallows_positional_argument(
+    *,
+    call: CallExpr,
+    signature: FunctionLike,
+    fullname: str,
+    ignore_names: list[str],
+    skip_bound_argument: bool,
+) -> bool:
+    """Return whether every overload rejects positional super
+    arguments.
+    """
+    callable_items = (
+        [signature] if isinstance(signature, CallableType) else signature.items
+    )
+    return all(
+        _call_disallows_positional_argument(
+            call=call,
+            signature=callable_item,
+            fullname=fullname,
+            ignore_names=ignore_names,
+            skip_bound_argument=skip_bound_argument,
+        )
+        for callable_item in callable_items
+    )
+
+
+def _iter_child_nodes(node: Node) -> list[Node]:
+    """Return syntax-tree child nodes relevant to call-expression
+    traversal.
+    """
+    children: list[Node] = []
+    for attr_name in _AST_CHILD_ATTRS:
+        if not hasattr(node, attr_name):
+            continue
+
+        value: object = getattr(node, attr_name)
+        if isinstance(value, Node):
+            children.append(value)
+        elif isinstance(value, (list, tuple)):
+            children.extend(
+                item
+                for item in cast("list[object] | tuple[object, ...]", value)
+                if isinstance(item, Node)
+            )
+
+    return children
+
+
+def _iter_call_exprs(node: Node) -> list[CallExpr]:
+    """Return call expressions contained in a node."""
+    calls: list[CallExpr] = []
+    stack = [node]
+
+    while stack:
+        current = stack.pop()
+
+        if isinstance(current, CallExpr):
+            calls.append(current)
+
+        stack.extend(_iter_child_nodes(node=current))
+
+    return calls
+
+
+def _check_super_method_call(
+    *,
+    ctx: ClassDefContext,
+    expr: CallExpr,
+    method_name: str,
+    ignore_names: list[str],
+) -> None:
+    """Check one ``super()`` method call expression."""
+    for info in ctx.cls.info.mro[1:]:
+        symbol = info.names.get(method_name)
+        if symbol is None:
+            continue
+
+        node = symbol.node
+        match node:
+            case FuncDef() | OverloadedFuncDef():
+                fullname = node.fullname
+                typ = node.type
+                skip_bound_argument = node.has_self_or_cls_argument
+            case Decorator():
+                fullname = node.fullname
+                typ = node.func.type
+                skip_bound_argument = node.func.has_self_or_cls_argument
+            case _:
+                continue
+
+        if fullname in ignore_names:
+            return
+
+        if not isinstance(typ, FunctionLike):
+            return
+
+        if _super_call_disallows_positional_argument(
+            call=expr,
+            signature=typ,
+            fullname=fullname,
+            ignore_names=ignore_names,
+            skip_bound_argument=skip_bound_argument,
+        ):
+            ctx.api.fail(
+                msg=(
+                    f'Too many positional arguments for "{method_name}" '
+                    f'of "{info.name}"'
+                ),
+                ctx=expr,
+                code=MISC,
+            )
+            return
+
+
+def _check_super_method_calls(
     ctx: ClassDefContext,
     *,
     ignore_names: list[str],
 ) -> None:
-    """Transform method definitions used by ``super()`` member access."""
-    for info in ctx.cls.info.mro[1:]:
-        _transform_type_info_methods(type_info=info, ignore_names=ignore_names)
-
-
-def _transform_type_info_methods(
-    *,
-    type_info: TypeInfo,
-    ignore_names: list[str],
-) -> None:
-    """Transform methods on a type info in place."""
-    for symbol in type_info.names.values():
-        node = symbol.node
-
-        if isinstance(node, (FuncDef, OverloadedFuncDef)):
-            node.type = _transform_type(
-                typ=node.type,
-                fullname=node.fullname,
-                ignore_names=ignore_names,
-                skip_bound_argument=node.has_self_or_cls_argument,
-            )
-        elif isinstance(node, Decorator):
-            node.func.type = _transform_type(
-                typ=node.func.type,
-                fullname=node.fullname,
-                ignore_names=ignore_names,
-                skip_bound_argument=node.func.has_self_or_cls_argument,
-            )
-            node.var.type = _transform_type(
-                typ=node.var.type,
-                fullname=node.fullname,
-                ignore_names=ignore_names,
-                skip_bound_argument=node.func.has_self_or_cls_argument,
-            )
+    """Check ``super()`` method calls in a class body."""
+    for expr in _iter_call_exprs(node=ctx.cls.defs):
+        method_name = _super_method_name(expr=expr)
+        if method_name is None:
+            continue
+        _check_super_method_call(
+            ctx=ctx,
+            expr=expr,
+            method_name=method_name,
+            ignore_names=ignore_names,
+        )
 
 
 class KeywordOnlyPlugin(Plugin):
@@ -299,10 +413,12 @@ class KeywordOnlyPlugin(Plugin):
         self,
         fullname: str,
     ) -> Callable[[ClassDefContext], None] | None:
-        """Transform base methods used by ``super()`` member access."""
+        """Check ``super()`` method calls without mutating base
+        classes.
+        """
         del fullname
         return partial(
-            _transform_base_method_signatures,
+            _check_super_method_calls,
             ignore_names=self._ignore_names,
         )
 

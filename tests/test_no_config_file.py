@@ -14,5 +14,6 @@ def test_no_config_file() -> None:
 
     plugin = KeywordOnlyPlugin(options=options)
 
+    assert plugin.get_base_class_hook(fullname="test.Base") is not None
     assert plugin.get_function_signature_hook(fullname="test.func") is not None
     assert plugin.get_method_signature_hook(fullname="test.method") is not None
