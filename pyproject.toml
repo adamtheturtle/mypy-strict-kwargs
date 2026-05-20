@@ -326,6 +326,12 @@ report.exclude_also = [
 ]
 report.show_missing = true
 
+[tool.mypy_strict_kwargs]
+ignore_names = [
+    # Internal helper; keep positional for TypeGuard narrowing.
+    "mypy_strict_kwargs.plugin._is_object_sequence",
+]
+
 [tool.pydocstringformatter]
 write = true
 split-summary-body = false

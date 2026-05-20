@@ -6,7 +6,7 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import cast  # noqa: TID251
+from typing import TypeGuard
 
 from mypy.errorcodes import MISC
 from mypy.nodes import (
@@ -53,6 +53,13 @@ _AST_CHILD_ATTRS = frozenset(
         "values",
     },
 )
+
+
+def _is_object_sequence(
+    value: object,
+) -> TypeGuard[list[object] | tuple[object, ...]]:
+    """Return whether ``value`` is a list or tuple of child objects."""
+    return isinstance(value, (list, tuple))
 
 
 def _preserved_positional_argument_count(fullname: str) -> int:
@@ -233,18 +240,15 @@ def _iter_child_nodes(node: Node) -> list[Node]:
     """
     children: list[Node] = []
     for attr_name in _AST_CHILD_ATTRS:
-        if not hasattr(node, attr_name):  # pylint: disable=bad-builtin
+        try:
+            value: object = object.__getattribute__(node, attr_name)
+        except AttributeError:
             continue
 
-        value: object = getattr(node, attr_name)  # pylint: disable=bad-builtin
         if isinstance(value, Node):
             children.append(value)
-        elif isinstance(value, (list, tuple)):
-            children.extend(
-                item
-                for item in cast("list[object] | tuple[object, ...]", value)
-                if isinstance(item, Node)
-            )
+        elif _is_object_sequence(value):
+            children.extend(item for item in value if isinstance(item, Node))
 
     return children
 
