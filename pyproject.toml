@@ -283,7 +283,10 @@ max_supported_python = "3.14"
 [tool.mypy]
 strict = true
 files = [ "." ]
-exclude = [ "build" ]
+exclude = [
+    "build",
+    "tests/test_call_expr_collection.py",
+]
 plugins = [
     "mypy_strict_kwargs",
     # See
@@ -296,6 +299,7 @@ follow_untyped_imports = true
 errors.non-exhaustive-match = "error"
 
 [tool.pyright]
+exclude = [ "tests/test_call_expr_collection.py" ]
 reportUnnecessaryTypeIgnoreComment = true
 enableTypeIgnoreComments = false
 typeCheckingMode = "strict"

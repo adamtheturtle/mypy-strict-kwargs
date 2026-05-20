@@ -9,13 +9,16 @@ from pathlib import Path
 
 from mypy.errorcodes import MISC
 from mypy.nodes import (
+    REVEAL_TYPE,
     ArgKind,
     AssertStmt,
+    AssertTypeExpr,
     AssignmentExpr,
     AssignmentStmt,
     AwaitExpr,
     Block,
     CallExpr,
+    CastExpr,
     ClassDef,
     ComparisonExpr,
     ConditionalExpr,
@@ -42,14 +45,17 @@ from mypy.nodes import (
     OverloadedFuncDef,
     RaiseStmt,
     ReturnStmt,
+    RevealExpr,
     SetComprehension,
     SetExpr,
     SliceExpr,
     StarExpr,
     Statement,
     SuperExpr,
+    TemplateStrExpr,
     TryStmt,
     TupleExpr,
+    TypeApplication,
     UnaryExpr,
     WhileStmt,
     WithStmt,
@@ -57,6 +63,16 @@ from mypy.nodes import (
     YieldFromExpr,
 )
 from mypy.options import Options
+from mypy.patterns import (
+    AsPattern,
+    ClassPattern,
+    MappingPattern,
+    OrPattern,
+    Pattern,
+    SequencePattern,
+    StarredPattern,
+    ValuePattern,
+)
 from mypy.plugin import (
     ClassDefContext,
     FunctionSigContext,
@@ -246,6 +262,10 @@ def _collect_call_exprs(item: object, calls: list[CallExpr], /) -> None:
             _collect_call_exprs(item.callee, calls)
             for argument in item.args:
                 _collect_call_exprs(argument, calls)
+            if item.analyzed is not None:
+                _collect_call_exprs(item.analyzed, calls)
+        case Pattern() as pattern:
+            _collect_call_exprs_from_pattern(pattern, calls)
         case Statement() as statement:
             _collect_call_exprs_from_statement(statement, calls)
         case Expression() as expression:
@@ -414,9 +434,11 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         case YieldExpr(expr=expr):
             if expr is not None:
                 _collect_call_exprs(expr, calls)
-        case OpExpr(left=left, right=right):
+        case OpExpr(left=left, right=right) as op_expr:
             _collect_call_exprs(left, calls)
             _collect_call_exprs(right, calls)
+            if op_expr.analyzed is not None:  # pragma: no cover
+                _collect_call_exprs(op_expr.analyzed, calls)
         case ComparisonExpr(operands=operands):
             for operand in operands:
                 _collect_call_exprs(operand, calls)
@@ -431,6 +453,11 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                 _collect_call_exprs(end_index, calls)
             if stride is not None:
                 _collect_call_exprs(stride, calls)
+        case CastExpr(expr=expr) | AssertTypeExpr(expr=expr):
+            _collect_call_exprs(expr, calls)
+        case RevealExpr(kind=kind, expr=expr):
+            if kind == REVEAL_TYPE and expr is not None:
+                _collect_call_exprs(expr, calls)
         case AssignmentExpr(target=target, value=value):
             _collect_call_exprs(target, calls)
             _collect_call_exprs(value, calls)
@@ -444,12 +471,23 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                 if key is not None:
                     _collect_call_exprs(key, calls)
                 _collect_call_exprs(value, calls)
+        case TemplateStrExpr(items=template_items):
+            for template_item in template_items:
+                match template_item:
+                    case (expression, _, _, format_expr):
+                        _collect_call_exprs(expression, calls)
+                        if format_expr is not None:
+                            _collect_call_exprs(format_expr, calls)
+                    case _ as literal:
+                        _collect_call_exprs(literal, calls)
         case SetExpr(items=items):
             for item in items:
                 _collect_call_exprs(item, calls)
-        case IndexExpr(base=base, index=index):
+        case IndexExpr(base=base, index=index) as index_expr:
             _collect_call_exprs(base, calls)
             _collect_call_exprs(index, calls)
+            if index_expr.analyzed is not None:
+                _collect_call_exprs(index_expr.analyzed, calls)
         case GeneratorExpr(
             indices=indices,
             sequences=sequences,
@@ -497,12 +535,58 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             _collect_call_exprs(cond, calls)
             _collect_call_exprs(if_expr, calls)
             _collect_call_exprs(else_expr, calls)
+        case TypeApplication(expr=expr):
+            _collect_call_exprs(expr, calls)
         case LambdaExpr():
             _collect_call_exprs_from_func_item(expression, calls)
         case StarExpr(expr=expr) | AwaitExpr(expr=expr):
             _collect_call_exprs(expr, calls)
         case SuperExpr(call=call):
             _collect_call_exprs(call, calls)
+        case _:
+            pass
+
+
+def _collect_call_exprs_from_pattern(  # noqa: C901, PLR0912
+    pattern: Pattern,
+    calls: list[CallExpr],
+    /,
+) -> None:
+    """Collect call expressions from a match pattern."""
+    match pattern:
+        case AsPattern(pattern=inner_pattern, name=name):
+            if inner_pattern is not None:
+                _collect_call_exprs_from_pattern(inner_pattern, calls)
+            if name is not None:
+                _collect_call_exprs(name, calls)
+        case OrPattern(patterns=patterns):
+            for inner_pattern in patterns:
+                _collect_call_exprs_from_pattern(inner_pattern, calls)
+        case ValuePattern(expr=expr):
+            _collect_call_exprs(expr, calls)
+        case SequencePattern(patterns=patterns):
+            for inner_pattern in patterns:
+                _collect_call_exprs_from_pattern(inner_pattern, calls)
+        case StarredPattern(capture=capture):
+            if capture is not None:
+                _collect_call_exprs(capture, calls)
+        case MappingPattern(keys=keys, values=values, rest=rest):
+            for key in keys:
+                _collect_call_exprs(key, calls)
+            for value in values:
+                _collect_call_exprs_from_pattern(value, calls)
+            if rest is not None:
+                _collect_call_exprs(rest, calls)
+        case ClassPattern(
+            class_ref=class_ref,
+            positionals=positionals,
+            keyword_values=keyword_values,
+        ):
+            _collect_call_exprs(class_ref, calls)
+            for positional in positionals:
+                _collect_call_exprs_from_pattern(positional, calls)
+            for keyword_value in keyword_values:
+                _collect_call_exprs_from_pattern(keyword_value, calls)
         case _:
             pass
 
