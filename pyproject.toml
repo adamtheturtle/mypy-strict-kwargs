@@ -33,39 +33,40 @@ dynamic = [
     "version",
 ]
 dependencies = [
-    "mypy>=1.13.0",
+    "mypy>=2.0.0",
 ]
 optional-dependencies.dev = [
     "actionlint-py==1.7.12.24",
     "check-manifest==0.51",
     "deptry==0.25.1",
     "doc8==2.0.0",
-    "doccmd==2026.3.26.2",
+    "doccmd==2026.5.19",
     "interrogate==1.7.0",
-    "mypy[faster-cache]==1.19.1",
-    "prek==0.3.8",
+    "mypy[faster-cache]==2.1.0",
+    "prek==0.4.0",
     "pydocstringformatter==0.7.5",
     "pylint[spelling]==4.0.5",
-    "pylint-per-file-ignores==3.2.0",
-    "pyproject-fmt==2.21.0",
-    "pyrefly==0.58.0",
-    "pyright==1.1.408",
+    "pylint-per-file-ignores==3.2.1",
+    "pyproject-fmt==2.21.2",
+    "pyrefly==1.0.0",
+    "pyright==1.1.409",
     "pyroma==5.0.1",
-    "pytest==9.0.2",
+    "pytest==9.0.3",
     "pytest-cov==7.1.0",
-    "pytest-mypy-plugins==4.0.0",
+    "pytest-mypy-plugins==4.0.3",
     "pyyaml==6.0.3",
-    "ruff==0.15.8",
+    "ruff==0.15.13",
     # We add shellcheck-py not only for shell scripts and shell code blocks,
     # but also because having it installed means that ``actionlint-py`` will
     # use it to lint shell commands in GitHub workflow files.
     "shellcheck-py==0.11.0.1",
-    "shfmt-py==3.12.0.2",
+    "shfmt-py==4.0.0",
     "sphinx-lint==1.0.2",
-    "ty==0.0.26",
+    "strict-kwargs==2026.5.19.post3",
+    "ty==0.0.38",
     "vulture==2.16",
     "yamlfix==1.19.1",
-    "zizmor==1.23.1",
+    "zizmor==1.25.2",
 ]
 optional-dependencies.release = [ "check-wheel-contents==0.6.3" ]
 urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
@@ -127,6 +128,7 @@ lint.per-file-ignores."tests/*" = [
 lint.unfixable = [
     "ERA001",
 ]
+lint.flake8-tidy-imports.banned-api."typing.cast".msg = "typing.cast is banned: use explicit type narrowing or a typed variable instead."
 lint.pydocstyle.convention = "google"
 
 [tool.pylint]
@@ -169,6 +171,17 @@ MASTER.load-plugins = [
 MASTER.unsafe-load-any-extension = false
 MASTER.extension-pkg-allow-list = [
     "mypy",
+]
+DEPRECATED_BUILTINS.bad-functions = [
+    # Use Pylint until Ruff can ban bare builtin calls, or until custom rules
+    # make this removable:
+    # https://github.com/astral-sh/ruff/issues/10079
+    # https://github.com/astral-sh/ruff/issues/970
+    "filter",
+    "getattr",
+    "hasattr",
+    "map",
+    "setattr",
 ]
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
@@ -257,7 +270,7 @@ ignore = [
 ]
 
 [tool.deptry]
-pep621_dev_dependency_groups = [
+optional_dependencies_dev_groups = [
     "dev",
     "release",
 ]
@@ -341,6 +354,7 @@ exclude = [ ".venv" ]
 ignore_names = [
     # mypy hooks:
     # https://mypy.readthedocs.io/en/latest/extending_mypy.html#current-list-of-plugin-hooks.
+    "get_base_class_hook",
     "get_function_signature_hook",
     "get_method_signature_hook",
 ]
