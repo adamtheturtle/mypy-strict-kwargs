@@ -6,7 +6,7 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import assert_never
+from typing import TypeAlias, assert_never
 
 from mypy.errorcodes import MISC
 from mypy.nodes import (
@@ -70,7 +70,6 @@ from mypy.patterns import (
     OrPattern,
     Pattern,
     SequencePattern,
-    SingletonPattern,
     StarredPattern,
     ValuePattern,
 )
@@ -83,6 +82,15 @@ from mypy.plugin import (
 from mypy.types import CallableType, FunctionLike
 
 _CallExprContainer = Expression | Statement
+_CollectablePattern: TypeAlias = (
+    AsPattern
+    | OrPattern
+    | ValuePattern
+    | SequencePattern
+    | StarredPattern
+    | MappingPattern
+    | ClassPattern
+)
 
 
 def _preserved_positional_argument_count(fullname: str) -> int:
@@ -611,19 +619,30 @@ def _collect_call_exprs_from_pattern(
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
-    assert isinstance(  # noqa: S101
-        pattern,
-        (
-            AsPattern,
-            OrPattern,
-            ValuePattern,
-            SingletonPattern,
-            SequencePattern,
-            StarredPattern,
-            MappingPattern,
-            ClassPattern,
-        ),
-    )
+    match pattern:
+        case (
+            AsPattern()
+            | OrPattern()
+            | ValuePattern()
+            | SequencePattern()
+            | StarredPattern()
+            | MappingPattern()
+            | ClassPattern()
+        ) as collectable_pattern:
+            _collect_call_exprs_from_collectable_pattern(
+                collectable_pattern,
+                calls,
+            )
+        case _:
+            pass
+
+
+def _collect_call_exprs_from_collectable_pattern(
+    pattern: _CollectablePattern,
+    calls: list[CallExpr],
+    /,
+) -> None:
+    """Collect call expressions from a match pattern."""
     match pattern:
         case AsPattern(pattern=inner_pattern, name=name):
             _collect_call_exprs_from_as_pattern(
@@ -638,8 +657,6 @@ def _collect_call_exprs_from_pattern(
         case StarredPattern(capture=capture):
             if capture is not None:  # pragma: no branch
                 _collect_call_exprs(capture, calls)
-        case SingletonPattern():
-            pass
         case MappingPattern(keys=keys, values=values, rest=rest):
             _collect_call_exprs_from_mapping_pattern(
                 keys=keys,
