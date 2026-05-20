@@ -6,7 +6,7 @@ import tomllib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import cast
+from typing import cast  # noqa: TID251
 
 from mypy.errorcodes import MISC
 from mypy.nodes import (
@@ -233,10 +233,10 @@ def _iter_child_nodes(node: Node) -> list[Node]:
     """
     children: list[Node] = []
     for attr_name in _AST_CHILD_ATTRS:
-        if not hasattr(node, attr_name):
+        if not hasattr(node, attr_name):  # pylint: disable=bad-builtin
             continue
 
-        value: object = getattr(node, attr_name)
+        value: object = getattr(node, attr_name)  # pylint: disable=bad-builtin
         if isinstance(value, Node):
             children.append(value)
         elif isinstance(value, (list, tuple)):
