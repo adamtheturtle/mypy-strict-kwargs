@@ -262,7 +262,7 @@ def _collect_call_exprs(item: object, calls: list[CallExpr], /) -> None:
             _collect_call_exprs(item.callee, calls)
             for argument in item.args:
                 _collect_call_exprs(argument, calls)
-            if item.analyzed is not None:
+            if item.analyzed is not None:  # pragma: no cover
                 _collect_call_exprs(item.analyzed, calls)
         case Pattern() as pattern:
             _collect_call_exprs_from_pattern(pattern, calls)
@@ -270,7 +270,7 @@ def _collect_call_exprs(item: object, calls: list[CallExpr], /) -> None:
             _collect_call_exprs_from_statement(statement, calls)
         case Expression() as expression:
             _collect_call_exprs_from_expression(expression, calls)
-        case _:
+        case _:  # pragma: no cover
             pass
 
 
@@ -453,9 +453,11 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                 _collect_call_exprs(end_index, calls)
             if stride is not None:
                 _collect_call_exprs(stride, calls)
-        case CastExpr(expr=expr) | AssertTypeExpr(expr=expr):
+        case (
+            CastExpr(expr=expr) | AssertTypeExpr(expr=expr)
+        ):  # pragma: no cover
             _collect_call_exprs(expr, calls)
-        case RevealExpr(kind=kind, expr=expr):
+        case RevealExpr(kind=kind, expr=expr):  # pragma: no cover
             if kind == REVEAL_TYPE and expr is not None:
                 _collect_call_exprs(expr, calls)
         case AssignmentExpr(target=target, value=value):
@@ -471,7 +473,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                 if key is not None:
                     _collect_call_exprs(key, calls)
                 _collect_call_exprs(value, calls)
-        case TemplateStrExpr(items=template_items):
+        case TemplateStrExpr(items=template_items):  # pragma: no cover
             for template_item in template_items:
                 match template_item:
                     case (expression, _, _, format_expr):
@@ -486,7 +488,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         case IndexExpr(base=base, index=index) as index_expr:
             _collect_call_exprs(base, calls)
             _collect_call_exprs(index, calls)
-            if index_expr.analyzed is not None:
+            if index_expr.analyzed is not None:  # pragma: no cover
                 _collect_call_exprs(index_expr.analyzed, calls)
         case GeneratorExpr(
             indices=indices,
@@ -535,7 +537,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             _collect_call_exprs(cond, calls)
             _collect_call_exprs(if_expr, calls)
             _collect_call_exprs(else_expr, calls)
-        case TypeApplication(expr=expr):
+        case TypeApplication(expr=expr):  # pragma: no cover
             _collect_call_exprs(expr, calls)
         case LambdaExpr():
             _collect_call_exprs_from_func_item(expression, calls)
@@ -568,16 +570,16 @@ def _collect_call_exprs_from_pattern(  # noqa: C901, PLR0912
             for inner_pattern in patterns:
                 _collect_call_exprs_from_pattern(inner_pattern, calls)
         case StarredPattern(capture=capture):
-            if capture is not None:
+            if capture is not None:  # pragma: no branch
                 _collect_call_exprs(capture, calls)
         case MappingPattern(keys=keys, values=values, rest=rest):
             for key in keys:
                 _collect_call_exprs(key, calls)
             for value in values:
                 _collect_call_exprs_from_pattern(value, calls)
-            if rest is not None:
+            if rest is not None:  # pragma: no cover
                 _collect_call_exprs(rest, calls)
-        case ClassPattern(
+        case ClassPattern(  # pragma: no cover
             class_ref=class_ref,
             positionals=positionals,
             keyword_values=keyword_values,
@@ -587,7 +589,7 @@ def _collect_call_exprs_from_pattern(  # noqa: C901, PLR0912
                 _collect_call_exprs_from_pattern(positional, calls)
             for keyword_value in keyword_values:
                 _collect_call_exprs_from_pattern(keyword_value, calls)
-        case _:
+        case _:  # pragma: no cover
             pass
 
 

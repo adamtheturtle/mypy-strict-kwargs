@@ -341,13 +341,10 @@
   mypy_config: |
     [mypy]
     plugins = mypy_strict_kwargs
-
-    [mypy_strict_kwargs]
-    ignore_names = main.cond, main.one, main.two, main.items, main.gen, main.cm, main.aio, main.class_decorator, builtins.str
   main: |-
     from collections.abc import Iterator
     from contextlib import contextmanager
-    from typing import Generic, TypeVar, overload
+    from typing import Generic, TypeVar, assert_type, cast, overload
 
     T = TypeVar("T")
 
@@ -430,7 +427,18 @@
                 one()
             with cm() as _:
                 one()
+            _ = cast(int, one())
+            assert_type(one(), int)
+            _ = f"{one():d}"
             match one():
+                case 0 | 1:
+                    one()
+                case {"k": v}:
+                    one()
+                case [a, *rest]:
+                    one()
+                case _ as captured:
+                    one()
                 case 0 if cond():
                     two(x=0)
                 case _:
