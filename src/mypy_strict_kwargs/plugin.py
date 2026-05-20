@@ -117,11 +117,13 @@ def _is_collectable_pattern(
 
 def _collectable_pattern(pattern: Pattern, /) -> _CollectablePattern:
     """Return a pattern that can contain call expressions."""
-    if _is_collectable_pattern(pattern):
+    if _is_collectable_pattern(pattern):  # pragma: no branch
         return pattern
 
-    msg = f"Unsupported match pattern: {type(pattern).__qualname__}"
-    raise TypeError(msg)
+    msg = (  # pragma: no cover
+        f"Unsupported match pattern: {type(pattern).__qualname__}"
+    )
+    raise TypeError(msg)  # pragma: no cover
 
 
 def _preserved_positional_argument_count(fullname: str) -> int:
