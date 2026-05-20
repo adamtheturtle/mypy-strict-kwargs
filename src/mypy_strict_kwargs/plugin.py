@@ -115,6 +115,15 @@ def _is_collectable_pattern(
     )
 
 
+def _collectable_pattern(pattern: Pattern, /) -> _CollectablePattern:
+    """Return a pattern that can contain call expressions."""
+    if _is_collectable_pattern(pattern):
+        return pattern
+
+    msg = f"Unsupported match pattern: {type(pattern).__qualname__}"
+    raise TypeError(msg)
+
+
 def _preserved_positional_argument_count(fullname: str) -> int:
     """Return positional arguments to keep positional after method binding."""
     # Some methods get called with positional arguments that callers do not
@@ -641,11 +650,8 @@ def _collect_call_exprs_from_pattern(
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
-    if not _is_collectable_pattern(pattern):
-        msg = f"Unsupported match pattern: {type(pattern).__qualname__}"
-        raise TypeError(msg)
-
-    match pattern:
+    collectable_pattern = _collectable_pattern(pattern)
+    match collectable_pattern:
         case AsPattern(pattern=inner_pattern, name=name):
             _collect_call_exprs_from_as_pattern(
                 inner_pattern=inner_pattern,
