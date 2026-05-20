@@ -242,7 +242,7 @@ def _iter_child_nodes(node: Node) -> list[Node]:
         elif isinstance(value, (list, tuple)):
             children.extend(
                 item
-                for item in cast("list[object] | tuple[object, ...]", value)  # noqa: TID251
+                for item in cast("list[object] | tuple[object, ...]", value)
                 if isinstance(item, Node)
             )
 
