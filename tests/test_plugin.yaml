@@ -437,6 +437,8 @@
                     one()
                 case [a, *rest]:
                     one()
+                case int():
+                    one()
                 case _ as captured:
                     one()
                 case 0 if cond():
