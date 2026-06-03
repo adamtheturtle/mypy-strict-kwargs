@@ -435,7 +435,11 @@
                     one()
                 case {"k": v}:
                     one()
+                case {"j": w, **mapping_rest}:
+                    one()
                 case [a, *rest]:
+                    one()
+                case [*_]:
                     one()
                 case int():
                     one()

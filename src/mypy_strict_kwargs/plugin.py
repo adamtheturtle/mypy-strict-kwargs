@@ -269,6 +269,10 @@ def _collect_call_exprs(
             _collect_call_exprs(item.callee, calls)
             for argument in item.args:
                 _collect_call_exprs(argument, calls)
+            # ``analyzed`` holds the special-form rewrite of a call (such
+            # as a ``cast()`` call).  It is populated during type
+            # checking, which runs after this base-class hook, so it is
+            # always ``None`` for the class body we traverse here.
             if item.analyzed is not None:  # pragma: no cover
                 _collect_call_exprs(item.analyzed, calls)
         case Statement() as statement:
@@ -442,6 +446,8 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         case OpExpr(left=left, right=right) as op_expr:
             _collect_call_exprs(left, calls)
             _collect_call_exprs(right, calls)
+            # ``analyzed`` (e.g. a ``X | Y`` type expression) is only set
+            # during type checking, after this base-class hook runs.
             if op_expr.analyzed is not None:  # pragma: no cover
                 _collect_call_exprs(op_expr.analyzed, calls)
         case ComparisonExpr(operands=operands):
@@ -458,6 +464,10 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                 _collect_call_exprs(end_index, calls)
             if stride is not None:
                 _collect_call_exprs(stride, calls)
+        # ``cast()``/``assert_type()``/``reveal_type()`` are rewritten
+        # into these nodes during type checking, after this base-class
+        # hook runs; in the class body we traverse they are still plain
+        # ``CallExpr`` nodes, so these branches are never reached here.
         case (
             CastExpr(expr=expr) | AssertTypeExpr(expr=expr)
         ):  # pragma: no cover
@@ -478,6 +488,8 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                 if key is not None:
                     _collect_call_exprs(key, calls)
                 _collect_call_exprs(value, calls)
+        # PEP 750 template strings (``t"..."``) only parse on Python
+        # 3.14+, so this branch is not exercised by the test suite.
         case TemplateStrExpr(items=template_items):  # pragma: no cover
             for template_item in template_items:
                 match template_item:
@@ -493,6 +505,8 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         case IndexExpr(base=base, index=index) as index_expr:
             _collect_call_exprs(base, calls)
             _collect_call_exprs(index, calls)
+            # ``analyzed`` (a type application or type alias) is only set
+            # during type checking, after this base-class hook runs.
             if index_expr.analyzed is not None:  # pragma: no cover
                 _collect_call_exprs(index_expr.analyzed, calls)
         case GeneratorExpr(
@@ -542,6 +556,9 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             _collect_call_exprs(cond, calls)
             _collect_call_exprs(if_expr, calls)
             _collect_call_exprs(else_expr, calls)
+        # A bare ``TypeApplication`` only appears as the ``analyzed`` form
+        # of an ``IndexExpr`` produced during type checking, after this
+        # base-class hook runs, so this branch is never reached here.
         case TypeApplication(expr=expr):  # pragma: no cover
             _collect_call_exprs(expr, calls)
         case LambdaExpr():
@@ -588,7 +605,7 @@ def _collect_call_exprs_from_mapping_pattern(
     for key in keys:
         _collect_call_exprs(key, calls)
     _collect_call_exprs_from_patterns(values, calls)
-    if rest is not None:  # pragma: no cover
+    if rest is not None:
         _collect_call_exprs(rest, calls)
 
 
@@ -636,7 +653,7 @@ def _collect_call_exprs_from_pattern(
         case ValuePattern(expr=expr):
             _collect_call_exprs(expr, calls)
         case StarredPattern(capture=capture):
-            if capture is not None:  # pragma: no branch
+            if capture is not None:
                 _collect_call_exprs(capture, calls)
         case SingletonPattern():
             pass
@@ -647,7 +664,7 @@ def _collect_call_exprs_from_pattern(
                 rest=rest,
                 calls=calls,
             )
-        case ClassPattern(  # pragma: no cover
+        case ClassPattern(
             class_ref=class_ref,
             positionals=positionals,
             keyword_values=keyword_values,
