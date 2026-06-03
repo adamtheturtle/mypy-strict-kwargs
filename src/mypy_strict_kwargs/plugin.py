@@ -549,7 +549,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             pass
 
 
-def _collect_call_exprs_from_pattern(  # noqa: C901, PLR0912
+def _collect_call_exprs_from_pattern(  # noqa: C901, PLR0912  # pylint: disable=too-complex,too-many-branches
     pattern: Pattern,
     calls: list[CallExpr],
     /,
