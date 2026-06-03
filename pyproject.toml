@@ -47,7 +47,7 @@ optional-dependencies.dev = [
     "pydocstringformatter==0.7.5",
     "pylint[spelling]==4.0.5",
     "pylint-per-file-ignores==3.2.1",
-    "pyproject-fmt==2.21.2",
+    "pyproject-fmt==2.23.0",
     "pyrefly==1.0.0",
     "pyright==1.1.409",
     "pyroma==5.0.1",
@@ -75,13 +75,13 @@ urls.Source = "https://github.com/adamtheturtle/mypy-strict-kwargs"
 entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plugin"
 
 [tool.setuptools]
-zip-safe = false
-package-data.mypy_strict_kwargs = [
-    "py.typed",
-]
 packages.find.where = [
     "src",
 ]
+package-data.mypy_strict_kwargs = [
+    "py.typed",
+]
+zip-safe = false
 
 [tool.distutils]
 bdist_wheel.universal = true
@@ -133,11 +133,77 @@ lint.flake8-tidy-imports.banned-api."typing.cast".msg = "typing.cast is banned: 
 lint.pydocstyle.convention = "google"
 
 [tool.pylint]
+# Disable the message, report, category or checker with the given id(s). You
+# can either give multiple identifiers separated by comma (,) or put this
+# option multiple times (only on the command line, not in the configuration
+# file where it should appear only once).You can also use "--disable=all" to
+# disable everything first and then reenable specific checks. For example, if
+# you want to run only the similarities checker, you can use "--disable=all
+# --enable=similarities". If you want to run only the classes checker, but have
+# no Warning level messages displayed, use"--disable=all --enable=classes
+# --disable=W"
+"MESSAGES CONTROL".disable = [
+    # Too difficult to please
+    "duplicate-code",
+    # Let ruff handle long lines
+    "line-too-long",
+    "locally-disabled",
+    "missing-return-type-doc",
+    # We don't need everything to be documented because of mypy
+    "missing-type-doc",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-instance-attributes",
+    "too-many-lines",
+    "too-many-locals",
+    "too-many-return-statements",
+    # Let ruff deal with sorting
+    "ungrouped-imports",
+    # Let ruff handle unused imports
+    "unused-import",
+    # mypy does not want untyped parameters.
+    "useless-type-doc",
+    # Let ruff handle imports
+    "wrong-import-order",
+]
+# Enable the message, report, category or checker with the given id(s). You can
+# either give multiple identifier separated by comma (,) or put this option
+# multiple time (only on the command line, not in the configuration file where
+# it should appear only once). See also the "--disable" option for examples.
+"MESSAGES CONTROL".enable = [
+    "bad-inline-option",
+    "deprecated-pragma",
+    "file-ignored",
+    "spelling",
+    "use-symbolic-message-instead",
+    "useless-suppression",
+]
+# We ignore invalid names because:
+# - We want to use generated module names, which may not be valid, but are never seen.
+"MESSAGES CONTROL".per-file-ignores = [
+    "doccmd_README_rst_*.py:invalid-name",
+]
+DEPRECATED_BUILTINS.bad-functions = [
+    # Use Pylint until Ruff can ban bare builtin calls, or until custom rules
+    # make this removable:
+    # https://github.com/astral-sh/ruff/issues/10079
+    # https://github.com/astral-sh/ruff/issues/970
+    "filter",
+    "getattr",
+    "hasattr",
+    "map",
+    "setattr",
+]
 # Allow the body of an if to be on the same line as the test if there is no
 # else.
 FORMAT.single-line-if-stmt = false
-# Pickle collected data for later comparisons.
-MASTER.persistent = true
+# Return non-zero exit code if useless-suppression is emitted.
+MAIN.fail-on = [
+    "useless-suppression",
+]
+MASTER.extension-pkg-allow-list = [
+    "mypy",
+]
 # Use multiple processes to speed up Pylint.
 MASTER.jobs = 0
 # List of plugins (as comma separated values of python modules names) to load,
@@ -150,7 +216,6 @@ MASTER.jobs = 0
 # - pylint.extensions.while_used
 # as they seemed to get in the way.
 MASTER.load-plugins = [
-    "pylint_per_file_ignores",
     "pylint.extensions.bad_builtin",
     "pylint.extensions.comparison_placement",
     "pylint.extensions.consider_refactoring_into_while_condition",
@@ -166,78 +231,13 @@ MASTER.load-plugins = [
     "pylint.extensions.redefined_variable_type",
     "pylint.extensions.set_membership",
     "pylint.extensions.typing",
+    "pylint_per_file_ignores",
 ]
+# Pickle collected data for later comparisons.
+MASTER.persistent = true
 # Allow loading of arbitrary C extensions. Extensions are imported into the
 # active Python interpreter and may run arbitrary code.
 MASTER.unsafe-load-any-extension = false
-MASTER.extension-pkg-allow-list = [
-    "mypy",
-]
-# Return non-zero exit code if useless-suppression is emitted.
-MAIN.fail-on = [
-    "useless-suppression",
-]
-DEPRECATED_BUILTINS.bad-functions = [
-    # Use Pylint until Ruff can ban bare builtin calls, or until custom rules
-    # make this removable:
-    # https://github.com/astral-sh/ruff/issues/10079
-    # https://github.com/astral-sh/ruff/issues/970
-    "filter",
-    "getattr",
-    "hasattr",
-    "map",
-    "setattr",
-]
-# Enable the message, report, category or checker with the given id(s). You can
-# either give multiple identifier separated by comma (,) or put this option
-# multiple time (only on the command line, not in the configuration file where
-# it should appear only once). See also the "--disable" option for examples.
-"MESSAGES CONTROL".enable = [
-    "bad-inline-option",
-    "deprecated-pragma",
-    "file-ignored",
-    "spelling",
-    "use-symbolic-message-instead",
-    "useless-suppression",
-]
-# Disable the message, report, category or checker with the given id(s). You
-# can either give multiple identifiers separated by comma (,) or put this
-# option multiple times (only on the command line, not in the configuration
-# file where it should appear only once).You can also use "--disable=all" to
-# disable everything first and then reenable specific checks. For example, if
-# you want to run only the similarities checker, you can use "--disable=all
-# --enable=similarities". If you want to run only the classes checker, but have
-# no Warning level messages displayed, use"--disable=all --enable=classes
-# --disable=W"
-"MESSAGES CONTROL".disable = [
-    "too-few-public-methods",
-    "too-many-locals",
-    "too-many-arguments",
-    "too-many-instance-attributes",
-    "too-many-return-statements",
-    "too-many-lines",
-    "locally-disabled",
-    # Let ruff handle long lines
-    "line-too-long",
-    # Let ruff handle unused imports
-    "unused-import",
-    # Let ruff deal with sorting
-    "ungrouped-imports",
-    # We don't need everything to be documented because of mypy
-    "missing-type-doc",
-    "missing-return-type-doc",
-    # Too difficult to please
-    "duplicate-code",
-    # Let ruff handle imports
-    "wrong-import-order",
-    # mypy does not want untyped parameters.
-    "useless-type-doc",
-]
-# We ignore invalid names because:
-# - We want to use generated module names, which may not be valid, but are never seen.
-"MESSAGES CONTROL".per-file-ignores = [
-    "doccmd_README_rst_*.py:invalid-name",
-]
 # Spelling dictionary name. Available dictionaries: none. To make it working
 # install python-enchant package.
 SPELLING.spelling-dict = "en_US"
@@ -247,33 +247,38 @@ SPELLING.spelling-private-dict-file = "spelling_private_dict.txt"
 # --spelling-private-dict-file option instead of raising a message.
 SPELLING.spelling-store-unknown-words = "no"
 
+[tool.interrogate]
+fail-under = 100
+verbose = 2
+omit-covered-files = true
+
 [tool.check-manifest]
 ignore = [
+    "*.enc",
     ".checkmake-config.ini",
+    ".git_archival.txt",
+    ".pre-commit-config.yaml",
     ".prettierrc",
     ".vscode/*",
     ".yamlfmt",
-    "*.enc",
-    ".pre-commit-config.yaml",
-    "readthedocs.yaml",
     "CHANGELOG.rst",
-    "newsfragments",
-    "newsfragments/**",
-    "towncrier_template.rst.jinja",
-    "CODE_OF_CONDUCT.rst",
-    "CONTRIBUTING.rst",
-    "LICENSE",
-    "Makefile",
     "ci",
     "ci/**",
+    "CODE_OF_CONDUCT.rst",
+    "CONTRIBUTING.rst",
     "docs",
     "docs/**",
-    ".git_archival.txt",
+    "LICENSE",
+    "lint.mk",
+    "Makefile",
+    "newsfragments",
+    "newsfragments/**",
+    "readthedocs.yaml",
     "spelling_private_dict.txt",
     "tests",
     "tests-pylintrc",
     "tests/**",
-    "lint.mk",
+    "towncrier_template.rst.jinja",
     "zizmor.yml",
 ]
 
@@ -283,49 +288,60 @@ optional_dependencies_dev_groups = [
     "release",
 ]
 
+[tool.vulture]
+# Duplicate some of .gitignore
+exclude = [ ".venv" ]
+ignore_names = [
+    # mypy hooks:
+    # https://mypy.readthedocs.io/en/latest/extending_mypy.html#current-list-of-plugin-hooks.
+    "get_base_class_hook",
+    "get_function_signature_hook",
+    "get_method_signature_hook",
+]
+
 [tool.pyproject-fmt]
 indent = 4
 keep_full_version = true
 max_supported_python = "3.14"
 
 [tool.mypy]
-strict = true
 files = [ "." ]
 exclude = [ "build" ]
+follow_untyped_imports = true
+strict = true
 plugins = [
     "mypy_strict_kwargs",
     # See
     # https://mypy.readthedocs.io/en/latest/extending_mypy.html#useful-tools.
     "mypy.plugins.proper_plugin",
 ]
-follow_untyped_imports = true
 
 [tool.pyrefly]
 errors.non-exhaustive-match = "error"
 
 [tool.pyright]
-reportUnnecessaryTypeIgnoreComment = true
-enableTypeIgnoreComments = false
 typeCheckingMode = "strict"
+enableTypeIgnoreComments = false
 # See
 # https://github.com/microsoft/pyright/issues/9617#issuecomment-2558167677.
 # This defines as a constant a variable in the ``mypy`` source code which is
 # used to configure a type hint.
 defineConstant = { MYPYC = false }
+reportUnnecessaryTypeIgnoreComment = true
 
 [tool.ty]
-# Disable support for `type: ignore` comments
-analysis.respect-type-ignore-comments = false
 # Error if ty emits any warning-level diagnostics.
 terminal.error-on-warning = true
+# Disable support for `type: ignore` comments
+analysis.respect-type-ignore-comments = false
 
 [tool.pytest]
-xfail_strict = true
-log_cli = true
 # Use the same process so that we can get coverage.
 #  * --mypy-same-process
 #  * The help documentation says that this "will create problems with import cache"
 addopts = [ "--mypy-same-process" ]
+log_cli = true
+xfail_strict = true
 
 [tool.coverage]
 run.branch = true
@@ -347,11 +363,11 @@ filename = "CHANGELOG.rst"
 # date) followed by a flat bullet list with no per-type sub-headings.
 template = "towncrier_template.rst.jinja"
 title_format = "{version}"
+issue_format = "#{issue}"
 # ``title_format`` underline first, then any nested headings.  A bare
 # version such as ``2026.05.18`` underlined with ``-`` matches every
 # pre-towncrier entry in CHANGELOG.rst.
 underlines = [ "-", "~", "^" ]
-issue_format = "#{issue}"
 type = [
     # A single, unnamed fragment type keeps the assembled output as one
     # flat bullet list, matching the historical changelog (which never
@@ -365,11 +381,6 @@ split-summary-body = false
 max-line-length = 75
 linewrap-full-docstring = true
 
-[tool.interrogate]
-fail-under = 100
-omit-covered-files = true
-verbose = 2
-
 [tool.doc8]
 max_line_length = 2000
 ignore_path = [
@@ -379,17 +390,6 @@ ignore_path = [
     "./node_modules",
     "./src/*.egg-info/",
     "./src/*/_setuptools_scm_version.txt",
-]
-
-[tool.vulture]
-# Duplicate some of .gitignore
-exclude = [ ".venv" ]
-ignore_names = [
-    # mypy hooks:
-    # https://mypy.readthedocs.io/en/latest/extending_mypy.html#current-list-of-plugin-hooks.
-    "get_base_class_hook",
-    "get_function_signature_hook",
-    "get_method_signature_hook",
 ]
 
 [tool.yamlfix]
