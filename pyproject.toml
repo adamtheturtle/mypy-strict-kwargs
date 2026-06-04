@@ -43,7 +43,7 @@ optional-dependencies.dev = [
     "doccmd==2026.5.25",
     "interrogate==1.7.0",
     "mypy[faster-cache]==2.1.0",
-    "prek==0.4.3",
+    "prek==0.4.4",
     "pydocstringformatter==0.7.5",
     "pylint[spelling]==4.0.5",
     "pylint-per-file-ignores==3.2.1",
@@ -55,7 +55,7 @@ optional-dependencies.dev = [
     "pytest-cov==7.1.0",
     "pytest-mypy-plugins==4.0.3",
     "pyyaml==6.0.3",
-    "ruff==0.15.15",
+    "ruff==0.15.16",
     # We add shellcheck-py not only for shell scripts and shell code blocks,
     # but also because having it installed means that ``actionlint-py`` will
     # use it to lint shell commands in GitHub workflow files.
