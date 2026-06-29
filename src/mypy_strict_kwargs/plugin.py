@@ -492,13 +492,13 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         # 3.14+, so this branch is not exercised by the test suite.
         case TemplateStrExpr(items=template_items):  # pragma: no cover
             for template_item in template_items:
-                match template_item:
-                    case (expression, _, _, format_expr):
-                        _collect_call_exprs(expression, calls)
-                        if format_expr is not None:
-                            _collect_call_exprs(format_expr, calls)
-                    case Expression() as literal:
-                        _collect_call_exprs(literal, calls)
+                if isinstance(template_item, tuple):
+                    expression, _, _, format_expr = template_item
+                    _collect_call_exprs(expression, calls)
+                    if format_expr is not None:
+                        _collect_call_exprs(format_expr, calls)
+                else:
+                    _collect_call_exprs(template_item, calls)
         case SetExpr(items=items):
             for item in items:
                 _collect_call_exprs(item, calls)
