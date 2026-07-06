@@ -44,7 +44,7 @@ optional-dependencies.dev = [
     "interrogate==1.7.0",
     "mypy[faster-cache]==2.1.0",
     "prek==0.4.8",
-    "pydocstringformatter==0.7.5",
+    "pydocstringformatter==1.0.0",
     "pylint[spelling]==4.0.6",
     "pylint-per-file-ignores==3.2.1",
     "pyproject-fmt==2.25.1",
