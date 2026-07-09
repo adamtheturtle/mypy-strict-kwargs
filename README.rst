@@ -19,8 +19,8 @@ With this plugin, ``mypy`` will only accept the form where keyword arguments are
 
 
    add(a=1, b=2)  # With this plugin, ``mypy`` will only accept this form
-   add(1, 2)  # type: ignore[misc]
-   add(1, b=2)  # type: ignore[misc]
+   add(1, 2)  # type: ignore[call-arg]
+   add(1, b=2)  # type: ignore[call-arg]
 
 Why?
 ----

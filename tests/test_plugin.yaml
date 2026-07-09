@@ -15,7 +15,7 @@
     def func(a: int) -> None: ...
     func(1)
   out: |
-    main:2: error: Too many positional arguments for "func"  [misc]
+    main:2: error: Too many positional arguments for "func"  [call-arg]
 
 - case: positional_optional
   mypy_config: |
@@ -26,7 +26,7 @@
     func(1)
     func()
   out: |
-    main:2: error: Too many positional arguments for "func"  [misc]
+    main:2: error: Too many positional arguments for "func"  [call-arg]
 
 - case: keyword_only
   mypy_config: |
@@ -86,7 +86,7 @@
     def func(a: int, **kwargs: str) -> None: ...
     func(1)
   out: |
-    main:2: error: Too many positional arguments for "func"  [misc]
+    main:2: error: Too many positional arguments for "func"  [call-arg]
 
 - case: var_positional_followed_by_keyword
   mypy_config: |
@@ -109,7 +109,7 @@
     c = C()
     c.method(1)
   out: |-
-    main:7: error: Too many positional arguments for "method" of "C"  [misc]
+    main:7: error: Too many positional arguments for "method" of "C"  [call-arg]
 
 - case: super_method
   mypy_config: |
@@ -599,7 +599,7 @@
     c(func=lambda: None, a=1)
     c(lambda: None, a=1)
   out: |-
-    main:7: error: Too many positional arguments for "__call__" of "C"  [misc]
+    main:7: error: Too many positional arguments for "__call__" of "C"  [call-arg]
 
 - case: descriptor
   mypy_config: |
@@ -638,7 +638,7 @@
 
     str(1)
   out: |-
-    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+    main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
 
 # We disable the cache for debug tests so that --mypy-same-process
 # does not skip calling the signature hooks (which would miss the
@@ -663,7 +663,7 @@
 
     str(1)
   out: |-
-    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+    main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
 
 - case: ignore_name_ini
   mypy_config: |
@@ -681,7 +681,7 @@
 
     str(1)
   out: |-
-    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+    main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
 
 # We disable the cache for debug tests so that --mypy-same-process
 # does not skip calling the signature hooks (which would miss the
@@ -704,7 +704,7 @@
 
     str(1)
   out: |-
-    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+    main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
 
 - case: ignore_name_ini_no_spaces
   mypy_config: |
@@ -722,7 +722,7 @@
 
     str(1)
   out: |-
-    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+    main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
 
 # Test when no mypy_strict_kwargs section exists - plugin should work with defaults
 - case: no_plugin_section_ini
@@ -733,7 +733,7 @@
     def func(a: int) -> None: ...
     func(1)
   out: |-
-    main:2: error: Too many positional arguments for "func"  [misc]
+    main:2: error: Too many positional arguments for "func"  [call-arg]
 
 # Test when ignore_names is empty
 - case: empty_ignore_names_ini
@@ -747,7 +747,7 @@
     def func(a: int) -> None: ...
     func(1)
   out: |-
-    main:2: error: Too many positional arguments for "func"  [misc]
+    main:2: error: Too many positional arguments for "func"  [call-arg]
 
 - case: ignore_name_dot_mypy_ini
   files:
@@ -767,7 +767,7 @@
 
     str(1)
   out: |-
-    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+    main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
 
 - case: ignore_name_setup_cfg
   files:
@@ -787,7 +787,7 @@
 
     str(1)
   out: |-
-    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+    main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
 
 # We disable the cache for debug tests so that --mypy-same-process
 # does not skip calling the signature hooks (which would miss the
@@ -812,4 +812,4 @@
 
     str(1)
   out: |-
-    main:5: error: Too many positional arguments for "not_ignored"  [misc]
+    main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
