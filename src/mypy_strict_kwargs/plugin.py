@@ -105,7 +105,7 @@ def _preserved_positional_argument_count(
         "__get__": 2,
         "__set__": 2,
     }
-    method_name = fullname.rsplit(".", maxsplit=1)[-1]
+    method_name = fullname.rsplit(sep=".", maxsplit=1)[-1]
     preserved_count = protocol_argument_counts.get(method_name, 0)
     if preserved_count == 0:
         return 0
@@ -136,7 +136,7 @@ def _transform_signature(
         ignore_names=ignore_names,
         skip_bound_argument=False,
         preserved_positional_argument_count=(
-            _preserved_positional_argument_count(ctx, fullname)
+            _preserved_positional_argument_count(ctx=ctx, fullname=fullname)
         ),
     )
 
