@@ -123,7 +123,7 @@
         def method(self, a: int) -> None:
             super().method(1)
   out: |-
-    main:6: error: Too many positional arguments for "method" of "B"  [misc]
+    main:6: error: Too many positional arguments for "method" of "B"  [call-arg]
 
 - case: super_method_ignore_name
   mypy_config: |
@@ -162,7 +162,7 @@
         def call(self) -> int:
             return super().method(1)
   out: |-
-    main:5: error: Too many positional arguments for "method" of "B"  [misc]
+    main:5: error: Too many positional arguments for "method" of "B"  [call-arg]
 
 - case: super_method_explicit_super
   mypy_config: |
@@ -176,7 +176,7 @@
         def method(self, a: int) -> None:
             super(C, self).method(1)
   out: |-
-    main:6: error: Too many positional arguments for "method" of "B"  [misc]
+    main:6: error: Too many positional arguments for "method" of "B"  [call-arg]
 
 - case: super_method_explicit_super_from_base
   mypy_config: |
@@ -208,7 +208,7 @@
             classes = (B,)
             super(classes[0], self).method(1)
   out: |-
-    main:7: error: Too many positional arguments for "method" of "B"  [misc]
+    main:7: error: Too many positional arguments for "method" of "B"  [call-arg]
     main:7: error: "method" undefined in superclass  [misc]
 
 # Fall back when the first argument name does not resolve to a type.
@@ -226,7 +226,7 @@
         def method(self, a: int) -> None:
             super(x, self).method(1)
   out: |-
-    main:8: error: Too many positional arguments for "method" of "B"  [misc]
+    main:8: error: Too many positional arguments for "method" of "B"  [call-arg]
     main:8: error: Argument 1 for "super" must be a type object; got a non-type instance  [arg-type]
 
 # Fall back when the explicit type is not in the current class MRO.
@@ -245,7 +245,7 @@
         def method(self, a: int) -> None:
             super(Unrelated, self).method(1)
   out: |-
-    main:9: error: Too many positional arguments for "method" of "B"  [misc]
+    main:9: error: Too many positional arguments for "method" of "B"  [call-arg]
     main:9: error: Argument 2 for "super" not an instance of argument 1  [misc]
 
 - case: super_method_keyword_argument
@@ -380,7 +380,7 @@
         def method(self, a: int) -> None:
             super().method(1)
   out: |-
-    main:14: error: Too many positional arguments for "method" of "B"  [misc]
+    main:14: error: Too many positional arguments for "method" of "B"  [call-arg]
 
 - case: super_method_staticmethod
   mypy_config: |
@@ -395,7 +395,7 @@
         def call(self) -> None:
             super().method(1)
   out: |-
-    main:7: error: Too many positional arguments for "method" of "B"  [misc]
+    main:7: error: Too many positional arguments for "method" of "B"  [call-arg]
 
 - case: super_method_assigned_staticmethod
   mypy_config: |
@@ -413,7 +413,7 @@
 
     B().method(1)
   out: |-
-    main:8: error: Too many positional arguments for "method" of "B"  [misc]
+    main:8: error: Too many positional arguments for "method" of "B"  [call-arg]
     main:10: error: Too many positional arguments  [call-arg]
 
 - case: super_method_no_type_check_decorated_base_method

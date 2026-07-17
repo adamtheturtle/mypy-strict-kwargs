@@ -8,7 +8,7 @@ from functools import partial
 from pathlib import Path
 from typing import assert_never
 
-from mypy.errorcodes import MISC
+from mypy.errorcodes import CALL_ARG
 from mypy.nodes import (
     REVEAL_TYPE,
     ArgKind,
@@ -833,7 +833,7 @@ def _check_super_method_call(
                     f'of "{info.name}"'
                 ),
                 ctx=expr,
-                code=MISC,
+                code=CALL_ARG,
             )
             return
         return
