@@ -466,6 +466,22 @@
     main:7: error: Definition of "method" in base class "B" is incompatible with definition in base class "A"  [misc]
     main:9: error: "int" not callable  [operator]
 
+- case: nested_class_super_uses_nested_class_mro
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class PositionalOnlyBase:
+        def method(self, value: int, /) -> None: ...
+
+    class KeywordBase:
+        def method(self, value: int) -> None: ...
+
+    class Outer(KeywordBase):
+        class Inner(PositionalOnlyBase):
+            def call(self) -> None:
+                super().method(1)
+
 - case: class_method_traversal_collects_calls
   disable_cache: true
   mypy_config: |
