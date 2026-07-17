@@ -328,8 +328,8 @@
     Base().method(*args)
     Base().method(*(1,))
   out: |-
-    main:6: error: Too many positional arguments for "method" of "Base"  [misc]
-    main:7: error: Too many positional arguments for "method" of "Base"  [misc]
+    main:6: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:7: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:18: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:19: error: Too many positional arguments for "method" of "Base"  [call-arg]
 
