@@ -222,7 +222,11 @@ def _call_disallows_positional_argument(
         if formal_arg_index >= len(transformed.arg_kinds):
             return False
 
-        if transformed.arg_kinds[formal_arg_index] in {
+        formal_arg_kind = transformed.arg_kinds[formal_arg_index]
+        if formal_arg_kind == ArgKind.ARG_STAR:
+            return False
+
+        if formal_arg_kind in {
             ArgKind.ARG_NAMED,
             ArgKind.ARG_NAMED_OPT,
         }:
