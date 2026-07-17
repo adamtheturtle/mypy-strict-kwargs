@@ -1,0 +1,2 @@
+Respect the explicit starting type when checking two-argument ``super()``
+calls.

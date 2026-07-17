@@ -40,6 +40,7 @@ from mypy.nodes import (
     ListExpr,
     MatchStmt,
     MemberExpr,
+    NameExpr,
     OperatorAssignmentStmt,
     OpExpr,
     OverloadedFuncDef,
@@ -56,6 +57,7 @@ from mypy.nodes import (
     TryStmt,
     TupleExpr,
     TypeApplication,
+    TypeInfo,
     UnaryExpr,
     WhileStmt,
     WithStmt,
@@ -191,6 +193,38 @@ def _super_method_name(expr: CallExpr) -> str | None:
             return name
         case _:
             return None
+
+
+def _super_method_mro(
+    *,
+    ctx: ClassDefContext,
+    expr: CallExpr,
+) -> list[TypeInfo]:
+    """Return the MRO entries searched by the ``super()`` call."""
+    callee = expr.callee
+    if not isinstance(callee, SuperExpr) or not callee.call.args:
+        return ctx.cls.info.mro[1:]
+
+    explicit_super_type = callee.call.args[0]
+    if not isinstance(explicit_super_type, (NameExpr, MemberExpr)):
+        return ctx.cls.info.mro[1:]
+
+    explicit_super_info = explicit_super_type.node
+    if not isinstance(explicit_super_info, TypeInfo):
+        symbol = ctx.api.lookup_qualified(
+            name=explicit_super_type.name,
+            ctx=explicit_super_type,
+            suppress_errors=True,
+        )
+        explicit_super_info = None if symbol is None else symbol.node
+    if not isinstance(explicit_super_info, TypeInfo):
+        return ctx.cls.info.mro[1:]
+
+    try:
+        super_type_index = ctx.cls.info.mro.index(explicit_super_info)
+    except ValueError:
+        return ctx.cls.info.mro[1:]
+    return ctx.cls.info.mro[super_type_index + 1 :]
 
 
 def _call_disallows_positional_argument(
@@ -694,7 +728,7 @@ def _check_super_method_call(
     ignore_names: list[str],
 ) -> None:
     """Check one ``super()`` method call expression."""
-    for info in ctx.cls.info.mro[1:]:
+    for info in _super_method_mro(ctx=ctx, expr=expr):
         symbol = info.names.get(method_name)
         if symbol is None:
             continue

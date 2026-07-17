@@ -178,6 +178,21 @@
   out: |-
     main:6: error: Too many positional arguments for "method" of "B"  [misc]
 
+- case: super_method_explicit_super_from_base
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class A:
+        def method(self, value: int, /) -> None: ...
+
+    class B(A):
+        def method(self, value: int) -> None: ...
+
+    class C(B):
+        def call(self) -> None:
+            super(B, self).method(1)
+
 - case: super_method_keyword_argument
   mypy_config: |
     [mypy]
