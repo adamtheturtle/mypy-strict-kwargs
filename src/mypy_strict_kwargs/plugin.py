@@ -710,7 +710,7 @@ def _check_super_method_call(
                 typ = node.func.type
                 skip_bound_argument = node.func.has_self_or_cls_argument
             case _:
-                continue
+                return
 
         if fullname in ignore_names:
             return
@@ -734,6 +734,7 @@ def _check_super_method_call(
                 code=MISC,
             )
             return
+        return
 
 
 def _check_super_method_calls(
