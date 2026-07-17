@@ -206,7 +206,7 @@ def _super_method_mro(
         return ctx.cls.info.mro[1:]
 
     explicit_super_type = callee.call.args[0]
-    if not isinstance(  # pragma: no cover
+    if not isinstance(
         explicit_super_type,
         (NameExpr, MemberExpr),
     ):
@@ -218,12 +218,12 @@ def _super_method_mro(
         suppress_errors=True,
     )
     explicit_super_info = None if symbol is None else symbol.node
-    if not isinstance(explicit_super_info, TypeInfo):  # pragma: no cover
+    if not isinstance(explicit_super_info, TypeInfo):
         return ctx.cls.info.mro[1:]
 
     try:
         super_type_index = ctx.cls.info.mro.index(explicit_super_info)
-    except ValueError:  # pragma: no cover
+    except ValueError:
         return ctx.cls.info.mro[1:]
     return ctx.cls.info.mro[super_type_index + 1 :]
 
