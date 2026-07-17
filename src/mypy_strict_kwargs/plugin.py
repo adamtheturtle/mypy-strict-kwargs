@@ -933,7 +933,12 @@ def _check_super_method_calls(
     *,
     ignore_names: list[str],
 ) -> None:
-    """Check ``super()`` method calls in a class body."""
+    """Check ``super()`` method calls in a class body.
+
+    Needed because ``mypy`` does not run method signature hooks for
+    ``super().method(...)``
+    (https://github.com/python/mypy/issues/21744).
+    """
     calls = _iter_call_exprs(ctx.cls.defs)
     for expr in calls:
         method_name = _super_method_name(expr=expr)
@@ -1038,6 +1043,11 @@ class KeywordOnlyPlugin(Plugin):
     ) -> Callable[[ClassDefContext], None] | None:
         """Check ``super()`` method calls without mutating base
         classes.
+
+        ``get_method_signature_hook`` is not invoked for
+        ``super().method(...)``
+        (https://github.com/python/mypy/issues/21744), so this hook
+        walks class bodies and checks those call sites manually.
         """
         del fullname
         return partial(
