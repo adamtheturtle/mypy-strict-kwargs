@@ -1,0 +1,1 @@
+Invalidate mypy's incremental cache when plugin configuration changes.
