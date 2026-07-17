@@ -349,6 +349,14 @@
     class C(B):
         def call(self) -> None:
             super().method()
+
+    class NestedBase:
+        class factory:
+            pass
+
+    class NestedChild(NestedBase):
+        def call(self) -> None:
+            super().factory()
   out: |-
     main:6: error: "int" not callable  [operator]
 
@@ -388,6 +396,25 @@
             super().method(1)
   out: |-
     main:7: error: Too many positional arguments for "method" of "B"  [misc]
+
+- case: super_method_assigned_staticmethod
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    def implementation(value: int) -> None: ...
+
+    class B:
+        method = staticmethod(implementation)
+
+    class C(B):
+        def call(self) -> None:
+            super().method(1)
+
+    B().method(1)
+  out: |-
+    main:8: error: Too many positional arguments for "method" of "B"  [misc]
+    main:10: error: Too many positional arguments  [call-arg]
 
 - case: super_method_no_type_check_decorated_base_method
   disable_cache: true
