@@ -178,6 +178,76 @@
   out: |-
     main:6: error: Too many positional arguments for "method" of "B"  [misc]
 
+- case: super_method_explicit_super_from_base
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class A:
+        def method(self, value: int, /) -> None: ...
+
+    class B(A):
+        def method(self, value: int) -> None: ...
+
+    class C(B):
+        def call(self) -> None:
+            super(B, self).method(1)
+
+# Fall back to zero-argument super() MRO when the first argument is not a
+# simple name or attribute (e.g. an index expression).
+- case: super_method_explicit_super_non_name
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class B:
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            classes = (B,)
+            super(classes[0], self).method(1)
+  out: |-
+    main:7: error: Too many positional arguments for "method" of "B"  [misc]
+    main:7: error: "method" undefined in superclass  [misc]
+
+# Fall back when the first argument name does not resolve to a type.
+- case: super_method_explicit_super_non_type
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    x = 1
+
+    class B:
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super(x, self).method(1)
+  out: |-
+    main:8: error: Too many positional arguments for "method" of "B"  [misc]
+    main:8: error: Argument 1 for "super" must be a type object; got a non-type instance  [arg-type]
+
+# Fall back when the explicit type is not in the current class MRO.
+- case: super_method_explicit_super_not_in_mro
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Unrelated:
+        pass
+
+    class B:
+        def method(self, a: int) -> None: ...
+
+    class C(B):
+        def method(self, a: int) -> None:
+            super(Unrelated, self).method(1)
+  out: |-
+    main:9: error: Too many positional arguments for "method" of "B"  [misc]
+    main:9: error: Argument 2 for "super" not an instance of argument 1  [misc]
+
 - case: super_method_keyword_argument
   mypy_config: |
     [mypy]
