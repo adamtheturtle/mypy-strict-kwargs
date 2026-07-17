@@ -351,7 +351,7 @@ def _super_call_disallows_positional_argument(
 
 def _collect_call_exprs(
     item: _CallExprContainer,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a syntax-tree node or expression."""
@@ -377,7 +377,7 @@ def _collect_call_exprs(
 
 def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
     statement: Statement,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a statement."""
@@ -513,7 +513,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
 
 def _collect_call_exprs_from_func_item(
     func_item: FuncItem,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a function or lambda."""
@@ -523,22 +523,21 @@ def _collect_call_exprs_from_func_item(
     first_body_call_index = len(calls)
     _collect_call_exprs(func_item.body, calls)
 
-    if isinstance(calls, _CollectedCalls):
-        fixed_tuple_lengths = {
-            argument.variable.name: fixed_tuple_length
-            for argument in func_item.arguments
-            if (
-                fixed_tuple_length := _fixed_tuple_annotation_length(
-                    annotation=argument.type_annotation,
-                )
+    fixed_tuple_lengths = {
+        argument.variable.name: fixed_tuple_length
+        for argument in func_item.arguments
+        if (
+            fixed_tuple_length := _fixed_tuple_annotation_length(
+                annotation=argument.type_annotation,
             )
-            is not None
-        }
-        for call in calls[first_body_call_index:]:
-            calls.fixed_tuple_lengths.setdefault(
-                call,
-                fixed_tuple_lengths,
-            )
+        )
+        is not None
+    }
+    for call in calls[first_body_call_index:]:
+        calls.fixed_tuple_lengths.setdefault(
+            call,
+            fixed_tuple_lengths,
+        )
 
 
 def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
@@ -557,7 +556,7 @@ def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
 
 def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
     expression: Expression,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from an expression."""
@@ -697,7 +696,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
 
 def _collect_call_exprs_from_patterns(
     patterns: list[Pattern],
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from match patterns."""
@@ -709,7 +708,7 @@ def _collect_call_exprs_from_as_pattern(
     *,
     inner_pattern: Pattern | None,
     name: Expression | None,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
 ) -> None:
     """Collect call expressions from an as pattern."""
     if inner_pattern is not None:
@@ -723,7 +722,7 @@ def _collect_call_exprs_from_mapping_pattern(
     keys: list[Expression],
     values: list[Pattern],
     rest: Expression | None,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
 ) -> None:
     """Collect call expressions from a mapping pattern."""
     for key in keys:
@@ -738,7 +737,7 @@ def _collect_call_exprs_from_class_pattern(
     class_ref: Expression,
     positionals: list[Pattern],
     keyword_values: list[Pattern],
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
 ) -> None:
     """Collect call expressions from a class pattern."""
     _collect_call_exprs(class_ref, calls)
@@ -748,7 +747,7 @@ def _collect_call_exprs_from_class_pattern(
 
 def _collect_call_exprs_from_pattern(
     pattern: Pattern,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
