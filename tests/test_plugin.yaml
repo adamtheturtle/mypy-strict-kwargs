@@ -750,6 +750,55 @@
     c.a
     c.a = 1
 
+- case: protocol_named_module_functions
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    def __call__(value: int) -> None: ...
+    def __get__(instance: object, owner: type[object] | None = None) -> None: ...
+    def __set__(instance: object, value: int) -> None: ...
+
+    __call__(1)
+    __get__(object(), object)
+    __set__(object(), 1)
+  out: |-
+    main:5: error: Too many positional arguments for "__call__"  [call-arg]
+    main:6: error: Too many positional arguments for "__get__"  [call-arg]
+    main:7: error: Too many positional arguments for "__set__"  [call-arg]
+
+- case: explicit_protocol_method_calls
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class ProtocolMethods:
+        def __call__(self, value: int) -> None: ...
+        def __get__(self, instance: object, owner: type[object] | None = None) -> None: ...
+        def __set__(self, instance: object, value: int) -> None: ...
+
+    methods = ProtocolMethods()
+    methods.__call__(1)
+    methods.__get__(object(), object)
+    methods.__set__(object(), 1)
+
+    call = methods.__call__
+    call(1)
+
+    class Child(ProtocolMethods):
+        def explicit_super_calls(self) -> None:
+            super().__call__(1)
+            super().__get__(object(), object)
+            super().__set__(object(), 1)
+  out: |-
+    main:7: error: Too many positional arguments for "__call__" of "ProtocolMethods"  [call-arg]
+    main:8: error: Too many positional arguments for "__get__" of "ProtocolMethods"  [call-arg]
+    main:9: error: Too many positional arguments for "__set__" of "ProtocolMethods"  [call-arg]
+    main:12: error: Too many positional arguments  [call-arg]
+    main:16: error: Too many positional arguments for "__call__" of "ProtocolMethods"  [misc]
+    main:17: error: Too many positional arguments for "__get__" of "ProtocolMethods"  [misc]
+    main:18: error: Too many positional arguments for "__set__" of "ProtocolMethods"  [misc]
+
 - case: ignore_name
   files:
     - path: pyproject.toml
