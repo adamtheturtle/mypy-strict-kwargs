@@ -79,6 +79,7 @@ from mypy.plugin import (
     FunctionSigContext,
     MethodSigContext,
     Plugin,
+    ReportConfigContext,
 )
 from mypy.types import CallableType, FunctionLike
 
@@ -805,6 +806,14 @@ class KeywordOnlyPlugin(Plugin):
                         fallback=False,
                     )
                 )
+
+    def report_config_data(self, ctx: ReportConfigContext) -> object:
+        """Return plugin configuration that affects cached modules."""
+        del ctx
+        return {
+            "debug": self._debug,
+            "ignore_names": self._ignore_names,
+        }
 
     def get_function_signature_hook(
         self,

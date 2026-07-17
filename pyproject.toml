@@ -297,6 +297,7 @@ ignore_names = [
     "get_base_class_hook",
     "get_function_signature_hook",
     "get_method_signature_hook",
+    "report_config_data",
 ]
 
 [tool.pyproject-fmt]
