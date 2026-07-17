@@ -795,9 +795,9 @@
     main:8: error: Too many positional arguments for "__get__" of "ProtocolMethods"  [call-arg]
     main:9: error: Too many positional arguments for "__set__" of "ProtocolMethods"  [call-arg]
     main:12: error: Too many positional arguments  [call-arg]
-    main:16: error: Too many positional arguments for "__call__" of "ProtocolMethods"  [misc]
-    main:17: error: Too many positional arguments for "__get__" of "ProtocolMethods"  [misc]
-    main:18: error: Too many positional arguments for "__set__" of "ProtocolMethods"  [misc]
+    main:16: error: Too many positional arguments for "__call__" of "ProtocolMethods"  [call-arg]
+    main:17: error: Too many positional arguments for "__get__" of "ProtocolMethods"  [call-arg]
+    main:18: error: Too many positional arguments for "__set__" of "ProtocolMethods"  [call-arg]
 
 - case: ignore_name
   files:
