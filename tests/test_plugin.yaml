@@ -406,7 +406,7 @@
         def method(self, a: int) -> None:
             super().method(1)
 
-- case: super_method_continues_past_positional_only_base
+- case: super_method_stops_at_positional_only_base
   mypy_config: |
     [mypy]
     plugins = mypy_strict_kwargs
@@ -420,8 +420,24 @@
     class C(B, A):
         def method(self, a: int) -> None:
             super().method(1)
+
+- case: super_method_stops_at_non_callable_base_member
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class A:
+        def method(self, a: int) -> None: ...
+
+    class B:
+        method = 1
+
+    class C(B, A):
+        def call(self) -> None:
+            super().method(1)
   out: |-
-    main:9: error: Too many positional arguments for "method" of "A"  [misc]
+    main:7: error: Definition of "method" in base class "B" is incompatible with definition in base class "A"  [misc]
+    main:9: error: "int" not callable  [operator]
 
 - case: class_method_traversal_collects_calls
   disable_cache: true

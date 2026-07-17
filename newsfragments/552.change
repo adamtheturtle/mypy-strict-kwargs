@@ -1,0 +1,2 @@
+Stop ``super()`` method lookup at the first MRO entry defining the member,
+matching Python's runtime attribute lookup.
