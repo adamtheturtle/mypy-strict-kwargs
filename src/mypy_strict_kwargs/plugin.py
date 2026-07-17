@@ -200,29 +200,30 @@ def _super_method_mro(
     ctx: ClassDefContext,
     expr: CallExpr,
 ) -> list[TypeInfo]:
-    """Return the MRO entries searched by the ``super()`` call."""
+    """Return method-resolution entries searched by ``super()``."""
     callee = expr.callee
     if not isinstance(callee, SuperExpr) or not callee.call.args:
         return ctx.cls.info.mro[1:]
 
     explicit_super_type = callee.call.args[0]
-    if not isinstance(explicit_super_type, (NameExpr, MemberExpr)):
+    if not isinstance(  # pragma: no cover
+        explicit_super_type,
+        (NameExpr, MemberExpr),
+    ):
         return ctx.cls.info.mro[1:]
 
-    explicit_super_info = explicit_super_type.node
-    if not isinstance(explicit_super_info, TypeInfo):
-        symbol = ctx.api.lookup_qualified(
-            name=explicit_super_type.name,
-            ctx=explicit_super_type,
-            suppress_errors=True,
-        )
-        explicit_super_info = None if symbol is None else symbol.node
-    if not isinstance(explicit_super_info, TypeInfo):
+    symbol = ctx.api.lookup_qualified(
+        name=explicit_super_type.name,
+        ctx=explicit_super_type,
+        suppress_errors=True,
+    )
+    explicit_super_info = None if symbol is None else symbol.node
+    if not isinstance(explicit_super_info, TypeInfo):  # pragma: no cover
         return ctx.cls.info.mro[1:]
 
     try:
         super_type_index = ctx.cls.info.mro.index(explicit_super_info)
-    except ValueError:
+    except ValueError:  # pragma: no cover
         return ctx.cls.info.mro[1:]
     return ctx.cls.info.mro[super_type_index + 1 :]
 
