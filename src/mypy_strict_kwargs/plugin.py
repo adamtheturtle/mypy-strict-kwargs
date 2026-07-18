@@ -104,6 +104,10 @@ class _CollectedCalls(list[CallExpr]):
         """Initialize an empty collection."""
         super().__init__()
         self.fixed_tuple_lengths: dict[CallExpr, dict[str, int]] = {}
+        # Parameter names bound by scopes already attached to each call, so
+        # that an inner scope's name shadows an outer scope's parameter of
+        # the same name even when the inner binding is not a fixed tuple.
+        self.bound_parameter_names: dict[CallExpr, set[str]] = {}
 
 
 def _preserved_positional_argument_count(
@@ -534,10 +538,18 @@ def _collect_call_exprs_from_func_item(
         is not None
     }
     for call in calls[first_body_call_index:]:
-        calls.fixed_tuple_lengths.setdefault(
-            call,
-            fixed_tuple_lengths,
-        )
+        # Inner scopes are collected first, so their parameters shadow this
+        # enclosing scope's parameters of the same name -- even when the
+        # inner binding is not a fixed tuple.
+        bound_names = calls.bound_parameter_names.setdefault(call, set())
+        lengths = calls.fixed_tuple_lengths.setdefault(call, {})
+        for argument in func_item.arguments:
+            name = argument.variable.name
+            if name in bound_names:
+                continue
+            bound_names.add(name)
+            if name in fixed_tuple_lengths:
+                lengths[name] = fixed_tuple_lengths[name]
 
 
 def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
