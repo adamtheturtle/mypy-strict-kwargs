@@ -4,6 +4,7 @@ import configparser
 import sys
 import tomllib
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import assert_never
@@ -755,27 +756,32 @@ def _assigned_staticmethod_target(
     return None
 
 
+@dataclass(frozen=True, kw_only=True)
+class _ResolvedSuperMember:
+    """A resolved ``super()`` member node and its assigned full name."""
+
+    node: FuncDef | OverloadedFuncDef | Decorator | None
+    assigned_fullname: str | None
+
+
 def _resolved_super_member_node(
     *,
     node: SymbolNode | None,
     class_def: ClassDef,
     method_name: str,
-) -> tuple[
-    FuncDef | OverloadedFuncDef | Decorator | None,
-    str | None,
-]:
+) -> _ResolvedSuperMember:
     """Resolve a supported member node and its assigned full name."""
     if isinstance(node, Var):
-        return (
-            _assigned_staticmethod_target(
+        return _ResolvedSuperMember(
+            node=_assigned_staticmethod_target(
                 class_def=class_def,
                 method_name=method_name,
             ),
-            node.fullname,
+            assigned_fullname=node.fullname,
         )
     if isinstance(node, FuncDef | OverloadedFuncDef | Decorator):
-        return node, None
-    return None, None
+        return _ResolvedSuperMember(node=node, assigned_fullname=None)
+    return _ResolvedSuperMember(node=None, assigned_fullname=None)
 
 
 def _check_super_method_call(
@@ -791,20 +797,21 @@ def _check_super_method_call(
         if symbol is None:
             continue
 
-        node, assigned_fullname = _resolved_super_member_node(
+        resolved = _resolved_super_member_node(
             node=symbol.node,
             class_def=info.defn,
             method_name=method_name,
         )
+        assigned_fullname = resolved.assigned_fullname
 
-        match node:
-            case FuncDef() | OverloadedFuncDef():
+        match resolved.node:
+            case FuncDef() | OverloadedFuncDef() as node:
                 fullname = assigned_fullname or node.fullname
                 typ = node.type
                 skip_bound_argument = (
                     assigned_fullname is None and node.has_self_or_cls_argument
                 )
-            case Decorator():
+            case Decorator() as node:
                 fullname = assigned_fullname or node.fullname
                 typ = node.func.type
                 skip_bound_argument = (
