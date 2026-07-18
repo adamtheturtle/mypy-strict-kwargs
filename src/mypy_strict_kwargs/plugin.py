@@ -8,7 +8,7 @@ from functools import partial
 from pathlib import Path
 from typing import assert_never
 
-from mypy.errorcodes import MISC
+from mypy.errorcodes import CALL_ARG
 from mypy.nodes import (
     REVEAL_TYPE,
     ArgKind,
@@ -53,12 +53,14 @@ from mypy.nodes import (
     StarExpr,
     Statement,
     SuperExpr,
+    SymbolNode,
     TemplateStrExpr,
     TryStmt,
     TupleExpr,
     TypeApplication,
     TypeInfo,
     UnaryExpr,
+    Var,
     WhileStmt,
     WithStmt,
     YieldExpr,
@@ -726,6 +728,56 @@ def _iter_call_exprs(node: _CallExprContainer, /) -> list[CallExpr]:
     return calls
 
 
+def _assigned_staticmethod_target(
+    *,
+    class_def: ClassDef,
+    method_name: str,
+) -> FuncDef | OverloadedFuncDef | Decorator | None:
+    """Return the callable wrapped by an assigned ``staticmethod``."""
+    for statement in class_def.defs.body:
+        match statement:
+            case AssignmentStmt(
+                lvalues=[NameExpr(name=name)],
+                rvalue=CallExpr(
+                    callee=NameExpr(fullname="builtins.staticmethod"),
+                    args=[
+                        NameExpr(
+                            node=(
+                                FuncDef() | OverloadedFuncDef() | Decorator()
+                            ) as target
+                        )
+                    ],
+                ),
+            ) if name == method_name:
+                return target
+            case _:
+                continue
+    return None
+
+
+def _resolved_super_member_node(
+    *,
+    node: SymbolNode | None,
+    class_def: ClassDef,
+    method_name: str,
+) -> tuple[
+    FuncDef | OverloadedFuncDef | Decorator | None,
+    str | None,
+]:
+    """Resolve a supported member node and its assigned full name."""
+    if isinstance(node, Var):
+        return (
+            _assigned_staticmethod_target(
+                class_def=class_def,
+                method_name=method_name,
+            ),
+            node.fullname,
+        )
+    if isinstance(node, FuncDef | OverloadedFuncDef | Decorator):
+        return node, None
+    return None, None
+
+
 def _check_super_method_call(
     *,
     ctx: ClassDefContext,
@@ -739,16 +791,26 @@ def _check_super_method_call(
         if symbol is None:
             continue
 
-        node = symbol.node
+        node, assigned_fullname = _resolved_super_member_node(
+            node=symbol.node,
+            class_def=info.defn,
+            method_name=method_name,
+        )
+
         match node:
             case FuncDef() | OverloadedFuncDef():
-                fullname = node.fullname
+                fullname = assigned_fullname or node.fullname
                 typ = node.type
-                skip_bound_argument = node.has_self_or_cls_argument
+                skip_bound_argument = (
+                    assigned_fullname is None and node.has_self_or_cls_argument
+                )
             case Decorator():
-                fullname = node.fullname
+                fullname = assigned_fullname or node.fullname
                 typ = node.func.type
-                skip_bound_argument = node.func.has_self_or_cls_argument
+                skip_bound_argument = (
+                    assigned_fullname is None
+                    and node.func.has_self_or_cls_argument
+                )
             case _:
                 return
 
@@ -771,7 +833,7 @@ def _check_super_method_call(
                     f'of "{info.name}"'
                 ),
                 ctx=expr,
-                code=MISC,
+                code=CALL_ARG,
             )
             return
         return
