@@ -500,7 +500,6 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             base_type_exprs=base_type_exprs,
             metaclass=metaclass,
             keywords=keywords,
-            defs=defs,
         ):
             for decorator in decorators:
                 _collect_call_exprs(decorator, calls)
@@ -510,7 +509,6 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 _collect_call_exprs(metaclass, calls)
             for keyword_expression in keywords.values():
                 _collect_call_exprs(keyword_expression, calls)
-            _collect_call_exprs(defs, calls)
         case _:
             pass
 
