@@ -86,9 +86,28 @@ from mypy.plugin import (
     Plugin,
     ReportConfigContext,
 )
-from mypy.types import CallableType, FunctionLike
+from mypy.types import (
+    CallableType,
+    EllipsisType,
+    FunctionLike,
+    Type,
+    UnboundType,
+)
 
 _CallExprContainer = Expression | Statement
+
+
+class _CollectedCalls(list[CallExpr]):
+    """Call expressions and fixed tuple lengths visible to each call."""
+
+    def __init__(self) -> None:
+        """Initialize an empty collection."""
+        super().__init__()
+        self.fixed_tuple_lengths: dict[CallExpr, dict[str, int]] = {}
+        # Parameter names bound by scopes already attached to each call, so
+        # that an inner scope's name shadows an outer scope's parameter of
+        # the same name even when the inner binding is not a fixed tuple.
+        self.bound_parameter_names: dict[CallExpr, set[str]] = {}
 
 
 def _preserved_positional_argument_count(
@@ -256,6 +275,7 @@ def _call_disallows_positional_argument(
     fullname: str,
     ignore_names: list[str],
     skip_bound_argument: bool,
+    fixed_tuple_lengths: dict[str, int],
 ) -> bool:
     """Return whether a call passes a transformed argument by position."""
     transformed = _transform_callable_type(
@@ -266,28 +286,41 @@ def _call_disallows_positional_argument(
         preserved_positional_argument_count=0,
     )
 
-    positional_argument_index = 0
-    for actual_arg_kind in call.arg_kinds:
-        if actual_arg_kind != ArgKind.ARG_POS:
+    formal_arg_index = 1 if skip_bound_argument else 0
+    for actual_arg, actual_arg_kind in zip(
+        call.args,
+        call.arg_kinds,
+        strict=True,
+    ):
+        if actual_arg_kind == ArgKind.ARG_POS:
+            positional_argument_count = 1
+        elif actual_arg_kind == ArgKind.ARG_STAR:
+            if isinstance(actual_arg, TupleExpr):
+                positional_argument_count = len(actual_arg.items)
+            elif isinstance(actual_arg, NameExpr):
+                positional_argument_count = fixed_tuple_lengths.get(
+                    actual_arg.name,
+                    0,
+                )
+            else:
+                positional_argument_count = 0
+        else:
             continue
 
-        formal_arg_index = positional_argument_index
-        if skip_bound_argument:
+        for _ in range(positional_argument_count):
+            if formal_arg_index >= len(transformed.arg_kinds):
+                return False
+
+            formal_arg_kind = transformed.arg_kinds[formal_arg_index]
+            if formal_arg_kind == ArgKind.ARG_STAR:
+                return False
             formal_arg_index += 1
-        positional_argument_index += 1
 
-        if formal_arg_index >= len(transformed.arg_kinds):
-            return False
-
-        formal_arg_kind = transformed.arg_kinds[formal_arg_index]
-        if formal_arg_kind == ArgKind.ARG_STAR:
-            return False
-
-        if formal_arg_kind in {
-            ArgKind.ARG_NAMED,
-            ArgKind.ARG_NAMED_OPT,
-        }:
-            return True
+            if formal_arg_kind in {
+                ArgKind.ARG_NAMED,
+                ArgKind.ARG_NAMED_OPT,
+            }:
+                return True
 
     return False
 
@@ -299,6 +332,7 @@ def _super_call_disallows_positional_argument(
     fullname: str,
     ignore_names: list[str],
     skip_bound_argument: bool,
+    fixed_tuple_lengths: dict[str, int],
 ) -> bool:
     """Return whether every overload rejects positional super
     arguments.
@@ -313,6 +347,7 @@ def _super_call_disallows_positional_argument(
             fullname=fullname,
             ignore_names=ignore_names,
             skip_bound_argument=skip_bound_argument,
+            fixed_tuple_lengths=fixed_tuple_lengths,
         )
         for callable_item in callable_items
     )
@@ -320,7 +355,7 @@ def _super_call_disallows_positional_argument(
 
 def _collect_call_exprs(
     item: _CallExprContainer,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a syntax-tree node or expression."""
@@ -346,7 +381,7 @@ def _collect_call_exprs(
 
 def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
     statement: Statement,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a statement."""
@@ -482,19 +517,58 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
 
 def _collect_call_exprs_from_func_item(
     func_item: FuncItem,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a function or lambda."""
     for argument in func_item.arguments:
         if argument.initializer is not None:
             _collect_call_exprs(argument.initializer, calls)
+    first_body_call_index = len(calls)
     _collect_call_exprs(func_item.body, calls)
+
+    fixed_tuple_lengths = {
+        argument.variable.name: fixed_tuple_length
+        for argument in func_item.arguments
+        if (
+            fixed_tuple_length := _fixed_tuple_annotation_length(
+                annotation=argument.type_annotation,
+            )
+        )
+        is not None
+    }
+    for call in calls[first_body_call_index:]:
+        # Inner scopes are collected first, so their parameters shadow this
+        # enclosing scope's parameters of the same name -- even when the
+        # inner binding is not a fixed tuple.
+        bound_names = calls.bound_parameter_names.setdefault(call, set())
+        lengths = calls.fixed_tuple_lengths.setdefault(call, {})
+        for argument in func_item.arguments:
+            name = argument.variable.name
+            if name in bound_names:
+                continue
+            bound_names.add(name)
+            if name in fixed_tuple_lengths:
+                lengths[name] = fixed_tuple_lengths[name]
+
+
+def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
+    """Return the length of a fixed tuple annotation, if known."""
+    if not isinstance(annotation, UnboundType) or annotation.name not in {
+        "Tuple",
+        "builtins.tuple",
+        "tuple",
+        "typing.Tuple",
+    }:
+        return None
+    if not annotation.args or isinstance(annotation.args[-1], EllipsisType):
+        return None
+    return len(annotation.args)
 
 
 def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
     expression: Expression,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from an expression."""
@@ -634,7 +708,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
 
 def _collect_call_exprs_from_patterns(
     patterns: list[Pattern],
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from match patterns."""
@@ -646,7 +720,7 @@ def _collect_call_exprs_from_as_pattern(
     *,
     inner_pattern: Pattern | None,
     name: Expression | None,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
 ) -> None:
     """Collect call expressions from an as pattern."""
     if inner_pattern is not None:
@@ -660,7 +734,7 @@ def _collect_call_exprs_from_mapping_pattern(
     keys: list[Expression],
     values: list[Pattern],
     rest: Expression | None,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
 ) -> None:
     """Collect call expressions from a mapping pattern."""
     for key in keys:
@@ -675,7 +749,7 @@ def _collect_call_exprs_from_class_pattern(
     class_ref: Expression,
     positionals: list[Pattern],
     keyword_values: list[Pattern],
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
 ) -> None:
     """Collect call expressions from a class pattern."""
     _collect_call_exprs(class_ref, calls)
@@ -685,7 +759,7 @@ def _collect_call_exprs_from_class_pattern(
 
 def _collect_call_exprs_from_pattern(
     pattern: Pattern,
-    calls: list[CallExpr],
+    calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
@@ -740,9 +814,9 @@ def _collect_call_exprs_from_pattern(
             assert_never(unreachable)
 
 
-def _iter_call_exprs(node: _CallExprContainer, /) -> list[CallExpr]:
+def _iter_call_exprs(node: _CallExprContainer, /) -> _CollectedCalls:
     """Return call expressions contained in a node."""
-    calls: list[CallExpr] = []
+    calls = _CollectedCalls()
     _collect_call_exprs(node, calls)
     return calls
 
@@ -808,6 +882,7 @@ def _check_super_method_call(
     expr: CallExpr,
     method_name: str,
     ignore_names: list[str],
+    fixed_tuple_lengths: dict[str, int],
 ) -> None:
     """Check one ``super()`` method call expression."""
     for info in _super_method_mro(ctx=ctx, expr=expr):
@@ -851,6 +926,7 @@ def _check_super_method_call(
             fullname=fullname,
             ignore_names=ignore_names,
             skip_bound_argument=skip_bound_argument,
+            fixed_tuple_lengths=fixed_tuple_lengths,
         ):
             ctx.api.fail(
                 msg=(
@@ -869,8 +945,14 @@ def _check_super_method_calls(
     *,
     ignore_names: list[str],
 ) -> None:
-    """Check ``super()`` method calls in a class body."""
-    for expr in _iter_call_exprs(ctx.cls.defs):
+    """Check ``super()`` method calls in a class body.
+
+    Needed because ``mypy`` does not run method signature hooks for
+    ``super().method(...)``
+    (https://github.com/python/mypy/issues/21744).
+    """
+    calls = _iter_call_exprs(ctx.cls.defs)
+    for expr in calls:
         method_name = _super_method_name(expr=expr)
         if method_name is None:
             continue
@@ -879,6 +961,7 @@ def _check_super_method_calls(
             expr=expr,
             method_name=method_name,
             ignore_names=ignore_names,
+            fixed_tuple_lengths=calls.fixed_tuple_lengths.get(expr, {}),
         )
 
 
@@ -972,6 +1055,11 @@ class KeywordOnlyPlugin(Plugin):
     ) -> Callable[[ClassDefContext], None] | None:
         """Check ``super()`` method calls without mutating base
         classes.
+
+        ``get_method_signature_hook`` is not invoked for
+        ``super().method(...)``
+        (https://github.com/python/mypy/issues/21744), so this hook
+        walks class bodies and checks those call sites manually.
         """
         del fullname
         return partial(
