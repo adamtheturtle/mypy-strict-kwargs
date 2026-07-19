@@ -3,6 +3,30 @@ Changelog
 
 .. towncrier release notes start
 
+2026.07.19
+----------
+
+- Fix false positives for ``super()`` calls whose remaining positional
+  arguments are consumed by ``*args``.
+
+- Respect the explicit starting type when checking two-argument ``super()``
+  calls.
+
+- Check nested-class ``super()`` calls against the nested class's MRO instead
+  of the enclosing class's MRO.
+
+- Stop ``super()`` method lookup at the first MRO entry defining the member,
+  matching Python's runtime attribute lookup.
+
+- Check positional arguments supplied to ``super()`` methods by unpacking
+  fixed-length tuples.
+
+- Restrict protocol-method positional exemptions to implicit calls.
+
+- Invalidate mypy's incremental cache when plugin configuration changes.
+
+- Check ``super()`` calls to methods assigned through ``staticmethod()``.
+
 2026.05.20.1
 ------------
 

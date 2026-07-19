@@ -1,1 +1,0 @@
-Check ``super()`` calls to methods assigned through ``staticmethod()``.

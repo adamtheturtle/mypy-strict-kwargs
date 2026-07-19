@@ -1,2 +1,0 @@
-Check nested-class ``super()`` calls against the nested class's MRO instead
-of the enclosing class's MRO.

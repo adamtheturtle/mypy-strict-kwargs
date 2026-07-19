@@ -1,2 +1,0 @@
-Fix false positives for ``super()`` calls whose remaining positional
-arguments are consumed by ``*args``.

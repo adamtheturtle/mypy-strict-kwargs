@@ -1,2 +1,0 @@
-Check positional arguments supplied to ``super()`` methods by unpacking
-fixed-length tuples.
