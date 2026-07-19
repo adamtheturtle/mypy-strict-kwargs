@@ -268,6 +268,20 @@ def _super_method_mro(
     return ctx.cls.info.mro[super_type_index + 1 :]
 
 
+def _leading_positional_count(*, items: list[Expression]) -> int:
+    """Return the number of items before the first ``*`` spread.
+
+    A ``*spread`` inside a sequence literal has no statically known length,
+    so only the items preceding it occupy known positions.
+    """
+    leading_count = 0
+    for item in items:
+        if isinstance(item, StarExpr):
+            break
+        leading_count += 1
+    return leading_count
+
+
 def _call_disallows_positional_argument(
     *,
     call: CallExpr,
@@ -296,7 +310,12 @@ def _call_disallows_positional_argument(
             positional_argument_count = 1
         elif actual_arg_kind == ArgKind.ARG_STAR:
             if isinstance(actual_arg, TupleExpr):
-                positional_argument_count = len(actual_arg.items)
+                # Only the items before a nested ``*spread`` occupy known
+                # positions; the spread itself has no statically known
+                # length, so anything after it cannot be placed.
+                positional_argument_count = _leading_positional_count(
+                    items=actual_arg.items,
+                )
             elif isinstance(actual_arg, NameExpr):
                 positional_argument_count = fixed_tuple_lengths.get(
                     actual_arg.name,
