@@ -309,7 +309,7 @@ def _call_disallows_positional_argument(
         if actual_arg_kind == ArgKind.ARG_POS:
             positional_argument_count = 1
         elif actual_arg_kind == ArgKind.ARG_STAR:
-            if isinstance(actual_arg, TupleExpr):
+            if isinstance(actual_arg, TupleExpr | ListExpr):
                 # Only the items before a nested ``*spread`` occupy known
                 # positions; the spread itself has no statically known
                 # length, so anything after it cannot be placed.
