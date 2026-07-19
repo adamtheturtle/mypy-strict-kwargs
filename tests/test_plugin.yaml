@@ -330,6 +330,7 @@
   out: |-
     main:6: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:7: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:8: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:18: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:19: error: Too many positional arguments for "method" of "Base"  [call-arg]
 
@@ -358,6 +359,48 @@
             super().method(*(1, *rest))
   out: |-
     main:6: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_method_list_literal_unpacking
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, value: int) -> None: ...
+
+    class Child(Base):
+        def call(self) -> None:
+            super().method(*[1])
+            super().method(*[1, 2])
+  out: |-
+    main:6: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:7: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_method_list_literal_star_spread
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, a: int, /, b: int = 0) -> None: ...
+
+    class Child(Base):
+        def call(self, rest: tuple[int, ...]) -> None:
+            super().method(*[1, *rest])
+
+- case: super_method_unpacking_unknown_expression
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, value: int) -> None: ...
+
+    class Child(Base):
+        data: tuple[int, ...]
+
+        def call(self) -> None:
+            super().method(*self.data)
 
 - case: super_method_fixed_tuple_unpacking_nested_scope
   mypy_config: |

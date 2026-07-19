@@ -1,0 +1,2 @@
+Check positional arguments supplied to ``super()`` methods by unpacking
+list literals.
