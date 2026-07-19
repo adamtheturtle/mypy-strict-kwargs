@@ -1,2 +1,0 @@
-Stop reporting false positives for ``super()`` methods called with a
-tuple literal that unpacks a variable-length ``*`` spread.

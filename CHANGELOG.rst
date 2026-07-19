@@ -3,6 +3,15 @@ Changelog
 
 .. towncrier release notes start
 
+2026.07.19.1
+------------
+
+- Check positional arguments supplied to ``super()`` methods by unpacking
+  list literals.
+
+- Stop reporting false positives for ``super()`` methods called with a
+  tuple literal that unpacks a variable-length ``*`` spread.
+
 2026.07.19
 ----------
 
