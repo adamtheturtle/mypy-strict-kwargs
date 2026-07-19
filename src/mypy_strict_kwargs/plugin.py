@@ -90,17 +90,33 @@ from mypy.types import CallableType, FunctionLike
 _CallExprContainer = Expression | Statement
 
 
-def _preserved_positional_argument_count(fullname: str) -> int:
-    """Return positional arguments to keep positional after method binding."""
-    # Some methods get called with positional arguments that callers do not
-    # supply explicitly.
-    if fullname.endswith((".__get__", ".__set__")):
-        # Descriptor attribute access and assignment.
-        return 2
-    if fullname.endswith(".__call__"):
-        # Called implicitly when an instance of the class is called.
-        return 1
-    return 0
+def _preserved_positional_argument_count(
+    ctx: FunctionSigContext | MethodSigContext,
+    fullname: str,
+) -> int:
+    """Return positional arguments used by an implicit protocol
+    operation.
+    """
+    if not isinstance(ctx, MethodSigContext):
+        return 0
+
+    protocol_argument_counts = {
+        "__call__": 1,
+        "__get__": 2,
+        "__set__": 2,
+    }
+    method_name = fullname.rsplit(sep=".", maxsplit=1)[-1]
+    preserved_count = protocol_argument_counts.get(method_name, 0)
+    if preserved_count == 0:
+        return 0
+
+    context = ctx.context
+    if isinstance(context, CallExpr):
+        context = context.callee
+    if isinstance(context, MemberExpr) and context.name == method_name:
+        # An explicit ``obj.__call__(...)``-style access.
+        return 0
+    return preserved_count
 
 
 def _transform_signature(
@@ -119,6 +135,9 @@ def _transform_signature(
         fullname=fullname,
         ignore_names=ignore_names,
         skip_bound_argument=False,
+        preserved_positional_argument_count=(
+            _preserved_positional_argument_count(ctx=ctx, fullname=fullname)
+        ),
     )
 
 
@@ -128,6 +147,7 @@ def _transform_callable_type(
     fullname: str,
     ignore_names: list[str],
     skip_bound_argument: bool,
+    preserved_positional_argument_count: int,
 ) -> CallableType:
     """Transform positional arguments in a callable type."""
     new_arg_kinds: list[ArgKind] = []
@@ -140,9 +160,6 @@ def _transform_callable_type(
 
     first_star_arg_index = star_arg_indices[0] if star_arg_indices else None
 
-    preserved_positional_argument_count = _preserved_positional_argument_count(
-        fullname=fullname,
-    )
     skip_offset = 1 if skip_bound_argument else 0
     skip_indices = {
         index + skip_offset
@@ -245,6 +262,7 @@ def _call_disallows_positional_argument(
         fullname=fullname,
         ignore_names=ignore_names,
         skip_bound_argument=skip_bound_argument,
+        preserved_positional_argument_count=0,
     )
 
     positional_argument_index = 0
