@@ -43,6 +43,7 @@ optional-dependencies.dev = [
     "doccmd==2026.7.19",
     "interrogate==1.7.0",
     "mypy[faster-cache]==2.3.0",
+    "no-defaults==1.0.1",
     "prek==0.4.11",
     "pydocstringformatter==1.0.0",
     "pylint[spelling]==4.0.6",
@@ -128,6 +129,7 @@ lint.per-file-ignores."tests/*" = [
 lint.unfixable = [
     "ERA001",
 ]
+lint.external = [ "NOD" ]
 lint.flake8-tidy-imports.banned-api."typing.cast".msg = "typing.cast is banned: use explicit type narrowing or a typed variable instead."
 lint.pydocstyle.convention = "google"
 
@@ -395,3 +397,7 @@ ignore_path = [
 [tool.yamlfix]
 section_whitelines = 1
 whitelines = 1
+
+[tool.no_defaults]
+private_only = true
+per_file_enforcement."tests/**" = "all"
