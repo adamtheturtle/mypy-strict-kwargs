@@ -1279,3 +1279,89 @@
     main:19: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:20: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:21: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_fixed_tuple_annotation_unpacks
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    import typing
+    from typing import Unpack
+
+    import typing_extensions
+
+    class Base:
+        def zero(self, value: int = 0) -> None:
+            return None
+
+        def one(self, first: int, /, second: int = 0) -> None:
+            return None
+
+        def two(self, first: int, second: int, /, third: int = 0) -> None:
+            return None
+
+        def three(
+            self, first: int, second: int, third: int, /, fourth: int = 0
+        ) -> None:
+            return None
+
+    class Child(Base):
+        def empty_unpack(self, args: tuple[*tuple[()]]) -> None:
+            super().zero(*args)
+
+        def empty_tuple(self, args: tuple[()]) -> None:
+            super().zero(*args)
+
+        def trailing_empty_unpack(self, args: tuple[int, *tuple[()]]) -> None:
+            super().one(*args)
+
+        def leading_empty_unpack(self, args: tuple[*tuple[()], int]) -> None:
+            super().one(*args)
+
+        def variadic_unpack(self, args: tuple[*tuple[int, ...]]) -> None:
+            super().zero(*args)
+
+        def pair_unpack(self, args: tuple[*tuple[int, int]]) -> None:
+            super().one(*args)
+
+        def nested_pair_unpack(
+            self, args: tuple[*tuple[*tuple[int, int]]]
+        ) -> None:
+            super().one(*args)
+
+        def pair_unpack_then_item(
+            self, args: tuple[*tuple[int, int], int]
+        ) -> None:
+            super().two(*args)
+
+        def legacy_unpack(self, args: tuple[Unpack[tuple[int, int]]]) -> None:
+            super().one(*args)
+
+        def qualified_unpack(
+            self, args: tuple[typing.Unpack[tuple[int, int]]]
+        ) -> None:
+            super().one(*args)
+
+        def extensions_unpack(
+            self, args: tuple[typing_extensions.Unpack[tuple[int, int]]]
+        ) -> None:
+            super().one(*args)
+
+        def two_pair_unpacks(
+            self, args: tuple[*tuple[int, int], *tuple[int, int]]
+        ) -> None:
+            super().three(*args)
+
+        def pair_unpack_then_items(
+            self, args: tuple[*tuple[int, int], int, int]
+        ) -> None:
+            super().three(*args)
+  out: |-
+    main:38: error: Too many positional arguments for "one" of "Base"  [call-arg]
+    main:43: error: Too many positional arguments for "one" of "Base"  [call-arg]
+    main:48: error: Too many positional arguments for "two" of "Base"  [call-arg]
+    main:51: error: Too many positional arguments for "one" of "Base"  [call-arg]
+    main:56: error: Too many positional arguments for "one" of "Base"  [call-arg]
+    main:61: error: Too many positional arguments for "one" of "Base"  [call-arg]
+    main:66: error: Too many positional arguments for "three" of "Base"  [call-arg]
+    main:71: error: Too many positional arguments for "three" of "Base"  [call-arg]
