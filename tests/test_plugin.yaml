@@ -2537,3 +2537,32 @@
   out: |-
     main:7: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:15: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_fixed_tuple_nonlocal_ownership
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def rebound(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                nonlocal args
+                args = [1]  # type: ignore[assignment]
+
+            super(Child, self).method(*args)
+
+        def rebound_in_nearest_scope(self, args: tuple[int, int]) -> None:
+            def middle() -> None:
+                args = [1]
+
+                def inner() -> None:
+                    nonlocal args
+                    args = [2]
+
+            super(Child, self).method(*args)
+  out: |-
+    main:21: error: Too many positional arguments for "method" of "Base"  [call-arg]
