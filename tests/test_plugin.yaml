@@ -1845,3 +1845,67 @@
     main:19: error: Too many positional arguments for "text" of "Base"  [call-arg]
     main:22: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:25: error: Too many positional arguments for "two" of "Base"  [call-arg]
+
+- case: super_explicit_start_type
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import Final
+
+    class A:
+        def method(self, value: int, /) -> None:
+            return None
+
+    class Namespace:
+        class B(A):
+            def method(self, value: int) -> None:
+                return None
+
+    class B2(A):
+        def method(self, value: int) -> None:
+            return None
+
+    Alias = B2
+    FinalAlias: Final = B2
+    NotAClass = 1
+    CyclicAlias: Final = CyclicAlias  # type: ignore[misc, name-defined, used-before-def]
+
+    for LoopAlias in (B2,):
+        pass
+
+    class C(Namespace.B):
+        def call(self) -> None:
+            super(Namespace.B, self).method(1)
+
+    class D(B2):
+        ClassAlias: Final = B2
+
+        def alias(self) -> None:
+            super(Alias, self).method(1)
+
+        def final_alias(self) -> None:
+            super(FinalAlias, self).method(1)
+
+        def direct(self) -> None:
+            super(B2, self).method(1)
+
+        def reported(self) -> None:
+            super(D, self).method(1)
+
+        def not_a_class(self) -> None:
+            super(NotAClass, self).method(1)  # type: ignore[arg-type, call-arg]
+
+        def cyclic(self) -> None:
+            super(CyclicAlias, self).method(1)
+
+        def loop_alias(self) -> None:
+            super(LoopAlias, self).method(1)
+
+        def class_alias(self) -> None:
+            super(D.ClassAlias, self).method(1)
+  out: |-
+    main:41: error: Too many positional arguments for "method" of "B2"  [call-arg]
+    main:47: error: Too many positional arguments for "method" of "B2"  [call-arg]
+    main:50: error: Too many positional arguments for "method" of "B2"  [call-arg]
+    main:53: error: Too many positional arguments for "method" of "B2"  [call-arg]

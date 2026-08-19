@@ -467,6 +467,84 @@ def _super_method_name(expr: CallExpr) -> str | None:
             return None
 
 
+def _dotted_name(*, expression: Expression) -> str | None:
+    """Return the dotted name an expression spells, if it is one."""
+    match expression:
+        case NameExpr(name=name):
+            return name
+        case MemberExpr(expr=inner_expression, name=name):
+            prefix = _dotted_name(expression=inner_expression)
+            return None if prefix is None else f"{prefix}.{name}"
+        case _:
+            return None
+
+
+def _aliased_class_info(
+    *,
+    api: SemanticAnalyzerPluginInterface,
+    var: Var,
+    visited: frozenset[str],
+) -> TypeInfo | None:
+    """Return the class a module-level alias variable refers to.
+
+    ``mypy`` records ``Alias: Final = SomeClass`` as a variable rather
+    than as a type alias, so the assignment is looked up in the module
+    which defines it.
+    """
+    module_name, _, variable_name = var.fullname.rpartition(".")
+    module = api.modules.get(module_name)
+    if module is None:
+        return None
+    for statement in module.defs:
+        match statement:
+            case AssignmentStmt(
+                lvalues=[NameExpr(name=lvalue_name)],
+                rvalue=rvalue,
+            ) if lvalue_name == variable_name:
+                return _named_class_info(
+                    api=api,
+                    expression=rvalue,
+                    visited=visited,
+                )
+            case _:
+                continue
+    return None
+
+
+def _named_class_info(
+    *,
+    api: SemanticAnalyzerPluginInterface,
+    expression: Expression,
+    visited: frozenset[str],
+) -> TypeInfo | None:
+    """Return the class an expression names, if it names one.
+
+    ``visited`` holds the aliases already followed, so that a cyclic
+    alias definition does not loop forever.
+    """
+    name = _dotted_name(expression=expression)
+    if name is None:
+        return None
+    symbol = api.lookup_qualified(
+        name=name,
+        ctx=expression,
+        suppress_errors=True,
+    )
+    node = None if symbol is None else symbol.node
+    if isinstance(node, TypeInfo):
+        return node
+    if isinstance(node, TypeAlias):
+        target = get_proper_type(typ=node.target)
+        return target.type if isinstance(target, Instance) else None
+    if isinstance(node, Var) and node.fullname not in visited:
+        return _aliased_class_info(
+            api=api,
+            var=node,
+            visited=visited | {node.fullname},
+        )
+    return None
+
+
 def _super_method_mro(
     *,
     ctx: ClassDefContext,
@@ -477,20 +555,12 @@ def _super_method_mro(
     if not isinstance(callee, SuperExpr) or not callee.call.args:
         return ctx.cls.info.mro[1:]
 
-    explicit_super_type = callee.call.args[0]
-    if not isinstance(
-        explicit_super_type,
-        (NameExpr, MemberExpr),
-    ):
-        return ctx.cls.info.mro[1:]
-
-    symbol = ctx.api.lookup_qualified(
-        name=explicit_super_type.name,
-        ctx=explicit_super_type,
-        suppress_errors=True,
+    explicit_super_info = _named_class_info(
+        api=ctx.api,
+        expression=callee.call.args[0],
+        visited=frozenset(),
     )
-    explicit_super_info = None if symbol is None else symbol.node
-    if not isinstance(explicit_super_info, TypeInfo):
+    if explicit_super_info is None:
         return ctx.cls.info.mro[1:]
 
     try:
