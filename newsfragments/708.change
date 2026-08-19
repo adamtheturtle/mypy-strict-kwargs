@@ -1,0 +1,2 @@
+Print the name used to check a ``super()`` method call in debug output, so
+that it can be added to ``ignore_names``.

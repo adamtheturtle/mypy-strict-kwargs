@@ -371,6 +371,18 @@ def _preserved_positional_argument_count(
     return preserved_count
 
 
+def _write_debug_fullname(*, fullname: str, path: str) -> None:
+    """Write a full name which ``ignore_names`` accepts.
+
+    Names found while checking a stub are not written: they are
+    internal to the type stubs rather than names from the checked
+    project, and they drown out the names a user is looking for.
+    """
+    if path.endswith(".pyi"):
+        return
+    sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
+
+
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
@@ -380,7 +392,7 @@ def _transform_signature(
 ) -> CallableType:
     """Transform positional arguments to keyword-only arguments."""
     if debug:
-        sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
+        _write_debug_fullname(fullname=fullname, path=ctx.api.path)
 
     return _transform_callable_type(
         signature=ctx.default_signature,
@@ -1585,6 +1597,7 @@ def _check_super_method_call(
     method_name: str,
     ignore_names: list[str],
     fixed_tuple_lengths: dict[str, int],
+    debug: bool,
 ) -> None:
     """Check one ``super()`` method call expression."""
     for info in _super_method_mro(ctx=ctx, expr=expr):
@@ -1616,6 +1629,12 @@ def _check_super_method_call(
             case _:
                 return
 
+        if debug:
+            _write_debug_fullname(
+                fullname=fullname,
+                path=ctx.api.modules[ctx.api.cur_mod_id].path,
+            )
+
         if fullname in ignore_names:
             return
 
@@ -1646,6 +1665,7 @@ def _check_super_method_calls(
     ctx: ClassDefContext,
     *,
     ignore_names: list[str],
+    debug: bool,
 ) -> None:
     """Check ``super()`` method calls in a class body.
 
@@ -1667,6 +1687,7 @@ def _check_super_method_calls(
             method_name=method_name,
             ignore_names=ignore_names,
             fixed_tuple_lengths=calls.fixed_tuple_lengths.get(expr, {}),
+            debug=debug,
         )
 
 
@@ -1903,6 +1924,7 @@ class KeywordOnlyPlugin(Plugin):
         return partial(
             _check_super_method_calls,
             ignore_names=self._ignore_names,
+            debug=self._debug,
         )
 
 
