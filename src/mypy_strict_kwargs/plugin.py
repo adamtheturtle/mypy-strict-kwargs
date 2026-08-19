@@ -25,6 +25,7 @@ from mypy.nodes import (
     ClassDef,
     ComparisonExpr,
     ConditionalExpr,
+    Context,
     Decorator,
     DelStmt,
     DictExpr,
@@ -63,6 +64,7 @@ from mypy.nodes import (
     TemplateStrExpr,
     TryStmt,
     TupleExpr,
+    TypeAlias,
     TypeApplication,
     TypeInfo,
     UnaryExpr,
@@ -90,14 +92,20 @@ from mypy.plugin import (
     MethodSigContext,
     Plugin,
     ReportConfigContext,
+    SemanticAnalyzerPluginInterface,
 )
 from mypy.types import (
     CallableType,
     EllipsisType,
     FunctionLike,
+    Instance,
+    TupleType,
     Type,
+    TypeVarTupleType,
     UnboundType,
+    UnionType,
     UnpackType,
+    get_proper_type,
 )
 
 _CallExprContainer = Expression | Statement
@@ -114,9 +122,10 @@ class _Scope:
 class _CollectedCalls(list[CallExpr]):
     """Call expressions and fixed tuple lengths visible to each call."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, resolver: "_AnnotationResolver") -> None:
         """Initialize an empty collection."""
         super().__init__()
+        self.resolver = resolver
         self.fixed_tuple_lengths: dict[CallExpr, dict[str, int]] = {}
         # Names bound by scopes already attached to each call, so that an
         # inner scope's binding shadows an outer scope's parameter of the
@@ -861,6 +870,7 @@ def _collect_call_exprs_from_func_item(
         and (
             fixed_tuple_length := _fixed_tuple_annotation_length(
                 annotation=argument.type_annotation,
+                resolver=calls.resolver,
             )
         )
         is not None
@@ -873,17 +883,120 @@ def _collect_call_exprs_from_func_item(
     )
 
 
-_TUPLE_ANNOTATION_NAMES = frozenset(
+# Names which an annotation may resolve to, looked up through the
+# semantic analyzer so that import aliases such as ``from typing import
+# Tuple as FixedTuple`` are recognized.
+_TUPLE_FULLNAMES = frozenset({"builtins.tuple", "typing.Tuple"})
+_ANNOTATED_FULLNAMES = frozenset(
+    {"typing.Annotated", "typing_extensions.Annotated"}
+)
+_UNPACK_FULLNAMES = frozenset({"typing.Unpack", "typing_extensions.Unpack"})
+_NEVER_FULLNAMES = frozenset(
     {
-        "Tuple",
-        "builtins.tuple",
-        "tuple",
-        "typing.Tuple",
+        "typing.NoReturn",
+        "typing.Never",
+        "typing_extensions.NoReturn",
+        "typing_extensions.Never",
     }
 )
 
 
-def _unpacked_annotation(*, annotation: Type) -> Type | None:
+@dataclass(frozen=True, kw_only=True)
+class _AnnotationResolver:
+    """Resolves the names used in an annotation before analysis."""
+
+    api: SemanticAnalyzerPluginInterface
+    context: Context
+
+    def fullname(self, name: str, /) -> str | None:
+        """Return the full name an annotation name refers to."""
+        symbol = self.api.lookup_qualified(
+            name=name,
+            ctx=self.context,
+            suppress_errors=True,
+        )
+        return None if symbol is None else symbol.fullname
+
+    def node(self, name: str, /) -> SymbolNode | None:
+        """Return the symbol an annotation name refers to."""
+        symbol = self.api.lookup_qualified(
+            name=name,
+            ctx=self.context,
+            suppress_errors=True,
+        )
+        return None if symbol is None else symbol.node
+
+
+def _fixed_tuple_type_length(
+    *,
+    tuple_type: Type | None,
+    type_var_tuple_length: int | None,
+) -> int | None:
+    """Return the length of an analyzed tuple type, if known.
+
+    ``type_var_tuple_length`` is the number of items a ``TypeVarTuple``
+    stands for, or ``None`` when that is not known.
+    """
+    proper_type = get_proper_type(typ=tuple_type)
+    if isinstance(proper_type, Instance):
+        proper_type = proper_type.type.tuple_type
+    if not isinstance(proper_type, TupleType):
+        return None
+
+    length = 0
+    for item in proper_type.items:
+        proper_item = get_proper_type(typ=item)
+        if not isinstance(proper_item, UnpackType):
+            length += 1
+        elif isinstance(
+            get_proper_type(typ=proper_item.type), TypeVarTupleType
+        ):
+            if type_var_tuple_length is None:
+                return None
+            length += type_var_tuple_length
+        else:
+            item_length = _fixed_tuple_type_length(
+                tuple_type=proper_item.type,
+                type_var_tuple_length=None,
+            )
+            if item_length is None:
+                return None
+            length += item_length
+    return length
+
+
+def _alias_fixed_tuple_length(
+    *,
+    alias: TypeAlias,
+    annotation: UnboundType,
+) -> int | None:
+    """Return the length of a tuple type alias, if known."""
+    type_var_tuple_count = len(
+        [
+            type_var
+            for type_var in alias.alias_tvars
+            if isinstance(type_var, TypeVarTupleType)
+        ]
+    )
+    type_var_tuple_length = None
+    if type_var_tuple_count == 1:
+        # Every argument which is not taken by another type variable is
+        # taken by the single ``TypeVarTuple``.
+        type_var_tuple_length = max(
+            len(annotation.args) - len(alias.alias_tvars) + 1,
+            0,
+        )
+    return _fixed_tuple_type_length(
+        tuple_type=alias.target,
+        type_var_tuple_length=type_var_tuple_length,
+    )
+
+
+def _unpacked_annotation(
+    *,
+    annotation: Type,
+    resolver: _AnnotationResolver,
+) -> Type | None:
     """Return the annotation unpacked by a PEP 646 ``*`` item.
 
     ``None`` means that the item is not an unpack.  Both the star syntax
@@ -892,22 +1005,19 @@ def _unpacked_annotation(*, annotation: Type) -> Type | None:
     """
     if isinstance(annotation, UnpackType):
         return annotation.type
-    if (
-        isinstance(annotation, UnboundType)
-        and annotation.name.rsplit(sep=".", maxsplit=1)[-1] == "Unpack"
-        and len(annotation.args) == 1
-    ):
-        return annotation.args[0]
+    if isinstance(annotation, UnboundType) and len(annotation.args) == 1:
+        if resolver.fullname(annotation.name) in _UNPACK_FULLNAMES:
+            return annotation.args[0]
+        return None
     return None
 
 
-def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
-    """Return the length of a fixed tuple annotation, if known."""
-    if (
-        not isinstance(annotation, UnboundType)
-        or annotation.name not in _TUPLE_ANNOTATION_NAMES
-    ):
-        return None
+def _literal_tuple_annotation_length(
+    *,
+    annotation: UnboundType,
+    resolver: _AnnotationResolver,
+) -> int | None:
+    """Return the length of a written-out tuple annotation, if known."""
     if annotation.empty_tuple_index:
         return 0
     if not annotation.args or isinstance(annotation.args[-1], EllipsisType):
@@ -915,15 +1025,94 @@ def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
 
     length = 0
     for item in annotation.args:
-        unpacked = _unpacked_annotation(annotation=item)
+        unpacked = _unpacked_annotation(annotation=item, resolver=resolver)
         if unpacked is None:
             length += 1
             continue
-        unpacked_length = _fixed_tuple_annotation_length(annotation=unpacked)
+        unpacked_length = _fixed_tuple_annotation_length(
+            annotation=unpacked,
+            resolver=resolver,
+        )
         if unpacked_length is None:
             return None
         length += unpacked_length
     return length
+
+
+def _unbound_fixed_tuple_length(
+    *,
+    annotation: UnboundType,
+    resolver: _AnnotationResolver,
+) -> int | None:
+    """Return the length of a named annotation, if known."""
+    fullname = resolver.fullname(annotation.name)
+    if fullname in _ANNOTATED_FULLNAMES:
+        return _fixed_tuple_annotation_length(
+            annotation=next(iter(annotation.args), None),
+            resolver=resolver,
+        )
+    if fullname in _TUPLE_FULLNAMES:
+        return _literal_tuple_annotation_length(
+            annotation=annotation,
+            resolver=resolver,
+        )
+
+    node = resolver.node(annotation.name)
+    if isinstance(node, TypeAlias):
+        return _alias_fixed_tuple_length(alias=node, annotation=annotation)
+    if isinstance(node, TypeInfo):
+        # A ``NamedTuple`` or a ``NewType`` over a fixed tuple.
+        return _fixed_tuple_type_length(
+            tuple_type=node.tuple_type,
+            type_var_tuple_length=None,
+        )
+    return None
+
+
+def _union_fixed_tuple_length(
+    *,
+    items: list[Type],
+    resolver: _AnnotationResolver,
+) -> int | None:
+    """Return the length shared by every inhabited union item."""
+    lengths: set[int] = set()
+    for item in items:
+        if (
+            isinstance(item, UnboundType)
+            and resolver.fullname(item.name) in _NEVER_FULLNAMES
+        ):
+            continue
+        length = _fixed_tuple_annotation_length(
+            annotation=item,
+            resolver=resolver,
+        )
+        if length is None:
+            return None
+        lengths.add(length)
+    if len(lengths) != 1:
+        return None
+    return lengths.pop()
+
+
+def _fixed_tuple_annotation_length(
+    *,
+    annotation: Type | None,
+    resolver: _AnnotationResolver,
+) -> int | None:
+    """Return the length of a fixed tuple annotation, if known."""
+    match annotation:
+        case UnionType(items=items):
+            return _union_fixed_tuple_length(items=items, resolver=resolver)
+        case UnboundType():
+            return _unbound_fixed_tuple_length(
+                annotation=annotation,
+                resolver=resolver,
+            )
+        case _:
+            return _fixed_tuple_type_length(
+                tuple_type=annotation,
+                type_var_tuple_length=None,
+            )
 
 
 def _collect_call_exprs_from_comprehension(
@@ -1202,9 +1391,14 @@ def _collect_call_exprs_from_pattern(
             assert_never(unreachable)
 
 
-def _iter_call_exprs(node: _CallExprContainer, /) -> _CollectedCalls:
+def _iter_call_exprs(
+    node: _CallExprContainer,
+    /,
+    *,
+    resolver: _AnnotationResolver,
+) -> _CollectedCalls:
     """Return call expressions contained in a node."""
-    calls = _CollectedCalls()
+    calls = _CollectedCalls(resolver=resolver)
     _collect_call_exprs(node, calls)
     return calls
 
@@ -1339,7 +1533,10 @@ def _check_super_method_calls(
     ``super().method(...)``
     (https://github.com/python/mypy/issues/21744).
     """
-    calls = _iter_call_exprs(ctx.cls.defs)
+    calls = _iter_call_exprs(
+        ctx.cls.defs,
+        resolver=_AnnotationResolver(api=ctx.api, context=ctx.cls),
+    )
     for expr in calls:
         method_name = _super_method_name(expr=expr)
         if method_name is None:

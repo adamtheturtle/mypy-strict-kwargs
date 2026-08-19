@@ -1663,3 +1663,139 @@
             super(Child, self).method(*args)
   out: |-
     main:39: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_fixed_tuple_annotation_aliases
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    import typing as t
+    from typing import (
+        Annotated,
+        NamedTuple,
+        Never,
+        NewType,
+        Tuple as FixedTuple,
+        TypeAlias,
+        TypeVar,
+        TypeVarTuple,
+        Unpack,
+    )
+
+    from typing_extensions import TypeAliasType
+
+    T = TypeVar("T")
+    Ts = TypeVarTuple("Ts")
+    Legacy: TypeAlias = tuple[int]
+    LegacyGeneric: TypeAlias = tuple[T]
+    LegacyVariadic: TypeAlias = tuple[Unpack[Ts]]
+    AliasType = TypeAliasType("AliasType", tuple[int])
+    NewArgs = NewType("NewArgs", tuple[int])
+    FuncNamed = NamedTuple("FuncNamed", [("value", int)])
+    VariadicAlias: TypeAlias = tuple[int, ...]
+    NestedUnpack: TypeAlias = tuple[Unpack[tuple[int, int]]]
+    NestedVariadic: TypeAlias = tuple[Unpack[tuple[Unpack[Ts]]]]
+
+    class ClassNamed(NamedTuple):
+        value: int
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+        def two(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def alias_import(self, args: FixedTuple[int]) -> None:
+            super().method(*args)
+
+        def module_alias(self, args: t.Tuple[int]) -> None:
+            super().method(*args)
+
+        def legacy_alias(self, args: Legacy) -> None:
+            super().method(*args)
+
+        def annotated(self, args: Annotated[tuple[int], "metadata"]) -> None:
+            super().method(*args)
+
+        def never_union(self, args: tuple[int] | Never) -> None:
+            super().method(*args)
+
+        def new_type(self, args: NewArgs) -> None:
+            super().method(*args)
+
+        def class_named_tuple(self, args: ClassNamed) -> None:
+            super().method(*args)
+
+        def functional_named_tuple(self, args: FuncNamed) -> None:
+            super().method(*args)
+
+        def legacy_generic(self, args: LegacyGeneric[int]) -> None:
+            super().method(*args)
+
+        def alias_type(self, args: AliasType) -> None:
+            super().method(*args)
+
+        def legacy_variadic(self, args: LegacyVariadic[int, int]) -> None:
+            super().two(*args)
+
+        def nested_unpack(self, args: NestedUnpack) -> None:
+            super().two(*args)
+
+        def nested_variadic(self, args: NestedVariadic[int, int]) -> None:
+            super().two(*args)
+
+        def mixed_union(self, args: tuple[int] | tuple[int, int]) -> None:
+            super().two(*args)
+
+        def variadic_alias(self, args: VariadicAlias) -> None:
+            super().method(*args)
+
+        def optional_tuple(self, args: tuple[int] | None) -> None:
+            if args is not None:
+                super().method(*args)
+  out: |-
+    main:40: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:43: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:46: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:49: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:52: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:55: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:58: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:61: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:64: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:67: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:70: error: Too many positional arguments for "two" of "Base"  [call-arg]
+    main:73: error: Too many positional arguments for "two" of "Base"  [call-arg]
+
+- case: super_fixed_tuple_annotation_pep_695_aliases
+  skip: sys.version_info < (3, 12)
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    type Modern = tuple[int]
+    type ModernGeneric[T] = tuple[T]
+    type ModernVariadic[*Ts] = tuple[*Ts]
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+        def two(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def modern_alias(self, args: Modern) -> None:
+            super().method(*args)
+
+        def modern_generic(self, args: ModernGeneric[int]) -> None:
+            super().method(*args)
+
+        def modern_variadic(self, args: ModernVariadic[int, int]) -> None:
+            super().two(*args)
+  out: |-
+    main:14: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:17: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:20: error: Too many positional arguments for "two" of "Base"  [call-arg]
