@@ -7,9 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import assert_never
+from typing import Any, NoReturn, assert_never
 
 from mypy.errorcodes import CALL_ARG
+from mypy.errors import CompileError
 from mypy.nodes import (
     REVEAL_TYPE,
     ArgKind,
@@ -982,6 +983,173 @@ def _check_super_method_calls(
         )
 
 
+@dataclass(frozen=True, kw_only=True)
+class _PluginConfiguration:
+    """Validated ``mypy_strict_kwargs`` configuration."""
+
+    ignore_names: list[str]
+    debug: bool
+
+
+def _config_error(
+    *, config_file: Path, section: str, message: str
+) -> NoReturn:
+    """Raise a ``mypy`` configuration error for a plugin option."""
+    raise CompileError(messages=[f"{config_file}: [{section}]: {message}"])
+
+
+def _is_list(value: object, /) -> bool:
+    """Return whether a configuration value is a list.
+
+    This deliberately returns a plain ``bool`` rather than a
+    ``TypeGuard`` so that callers keep their explicitly dynamic type
+    instead of narrowing to a container of unknown items.
+    """
+    return isinstance(value, list)
+
+
+def _is_table(value: object, /) -> bool:
+    """Return whether a configuration value is a table.
+
+    See ``_is_list`` for why this is not a ``TypeGuard``.
+    """
+    return isinstance(value, dict)
+
+
+def _validated_ignore_names(
+    *,
+    value: object,
+    config_file: Path,
+    section: str,
+) -> list[str]:
+    """Return ``ignore_names`` after checking that it is a list of
+    strings.
+    """
+    message = '"ignore_names" must be an array of strings'
+    items: Any = value
+    if not _is_list(items):
+        _config_error(
+            config_file=config_file,
+            section=section,
+            message=message,
+        )
+
+    ignore_names: list[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            _config_error(
+                config_file=config_file,
+                section=section,
+                message=message,
+            )
+        ignore_names.append(item)
+    return ignore_names
+
+
+def _validated_debug(
+    *,
+    value: object,
+    config_file: Path,
+    section: str,
+) -> bool:
+    """Return ``debug`` after checking that it is a boolean."""
+    if not isinstance(value, bool):
+        _config_error(
+            config_file=config_file,
+            section=section,
+            message='"debug" must be a boolean',
+        )
+    return value
+
+
+def _toml_plugin_configuration(
+    *,
+    config_file: Path,
+) -> _PluginConfiguration:
+    """Return the plugin configuration from a TOML configuration file."""
+    section = "tool.mypy_strict_kwargs"
+    with config_file.open(mode="rb") as config_file_object:
+        config_dictionary = tomllib.load(config_file_object)
+
+    tools: dict[str, Any] = config_dictionary.get("tool", {})
+    plugin_config: Any = tools.get("mypy_strict_kwargs", {})
+    if not _is_table(plugin_config):
+        _config_error(
+            config_file=config_file,
+            section=section,
+            message="expected a table",
+        )
+
+    return _PluginConfiguration(
+        ignore_names=_validated_ignore_names(
+            value=plugin_config.get("ignore_names", []),
+            config_file=config_file,
+            section=section,
+        ),
+        debug=_validated_debug(
+            value=plugin_config.get("debug", False),
+            config_file=config_file,
+            section=section,
+        ),
+    )
+
+
+def _ini_plugin_configuration(
+    *,
+    config_file: Path,
+) -> _PluginConfiguration:
+    """Return the plugin configuration from an INI configuration file.
+
+    This handles ``mypy.ini``, ``.mypy.ini`` and ``setup.cfg``.
+    """
+    section = "mypy_strict_kwargs"
+    parser = configparser.ConfigParser()
+    parser.read(filenames=config_file)
+
+    if not parser.has_section(section=section):
+        return _PluginConfiguration(ignore_names=[], debug=False)
+
+    ignore_names_str = parser.get(
+        section=section,
+        option="ignore_names",
+        fallback="",
+    )
+    ignore_names = [
+        name.strip()
+        for name in ignore_names_str.split(sep=",")
+        if name.strip()
+    ]
+
+    try:
+        debug = parser.getboolean(
+            section=section,
+            option="debug",
+            fallback=False,
+        )
+    except ValueError:
+        _config_error(
+            config_file=config_file,
+            section=section,
+            message='"debug" must be a boolean',
+        )
+
+    return _PluginConfiguration(ignore_names=ignore_names, debug=debug)
+
+
+def _plugin_configuration(
+    *,
+    config_file_path: str | None,
+) -> _PluginConfiguration:
+    """Return the validated configuration for the plugin."""
+    if config_file_path is None:
+        return _PluginConfiguration(ignore_names=[], debug=False)
+
+    config_file = Path(config_file_path)
+    if config_file.suffix == ".toml":
+        return _toml_plugin_configuration(config_file=config_file)
+    return _ini_plugin_configuration(config_file=config_file)
+
+
 class KeywordOnlyPlugin(Plugin):
     """
     A plugin that transforms positional arguments to keyword-only
@@ -994,45 +1162,11 @@ class KeywordOnlyPlugin(Plugin):
         This is not friendly to errors yet.
         """
         super().__init__(options=options)
-        self._ignore_names: list[str] = []
-        self._debug = False
-
-        if options.config_file is None:
-            return
-
-        config_file = Path(options.config_file)
-        if config_file.suffix == ".toml":
-            with config_file.open(mode="rb") as rf:
-                config_dictionary = tomllib.load(rf)
-
-            tools = dict(config_dictionary.get("tool", {}))
-            plugin_config = dict(tools.get("mypy_strict_kwargs", {}))
-            self._ignore_names = list(plugin_config.get("ignore_names", []))
-            self._debug = bool(plugin_config.get("debug", False))
-        else:
-            # Handle ``mypy.ini``, ``.mypy.ini``, ``setup.cfg``
-            parser = configparser.ConfigParser()
-            parser.read(filenames=config_file)
-
-            if parser.has_section(section="mypy_strict_kwargs"):
-                ignore_names_str = parser.get(
-                    section="mypy_strict_kwargs",
-                    option="ignore_names",
-                    fallback="",
-                )
-                if ignore_names_str:
-                    self._ignore_names = [
-                        name.strip()
-                        for name in ignore_names_str.split(sep=",")
-                        if name.strip()
-                    ]
-                self._debug = bool(
-                    parser.getboolean(
-                        section="mypy_strict_kwargs",
-                        option="debug",
-                        fallback=False,
-                    )
-                )
+        configuration = _plugin_configuration(
+            config_file_path=options.config_file,
+        )
+        self._ignore_names = configuration.ignore_names
+        self._debug = configuration.debug
 
     def report_config_data(self, ctx: ReportConfigContext) -> object:
         """Return plugin configuration that affects cached modules."""

@@ -1,0 +1,2 @@
+Report a configuration error for non-boolean ``debug`` values instead of
+coercing them.
