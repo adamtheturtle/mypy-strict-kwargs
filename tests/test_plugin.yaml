@@ -1365,3 +1365,301 @@
     main:61: error: Too many positional arguments for "one" of "Base"  [call-arg]
     main:66: error: Too many positional arguments for "three" of "Base"  [call-arg]
     main:71: error: Too many positional arguments for "three" of "Base"  [call-arg]
+
+- case: super_fixed_tuple_shadowing
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from collections.abc import Callable, Iterator
+    from contextlib import contextmanager
+
+    args: list[int] = [1]
+
+    @contextmanager
+    def values() -> Iterator[list[int]]:
+        yield [1]
+
+    @contextmanager
+    def pair_values() -> Iterator[tuple[list[int], int]]:
+        yield ([1], 0)
+
+    @contextmanager
+    def ignored() -> Iterator[None]:
+        yield
+
+    class Values:
+        def __iter__(self) -> Iterator[int]:
+            return iter([1])
+
+    def decorate(function: Callable[[], None]) -> Values:
+        return Values()
+
+    class Base:
+        def method(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def simple_assignment(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                args = [1]
+                super(Child, self).method(*args)
+
+        def annotated_assignment(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                args: list[int] = [1]
+                super(Child, self).method(*args)
+
+        def destructuring_assignment(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                args, _ = ([1], 0)
+                super(Child, self).method(*args)
+
+        def list_destructuring(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                [args] = [[1]]
+                super(Child, self).method(*args)
+
+        def starred_assignment(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                *args, = [1]
+                super(Child, self).method(*args)
+
+        def chained_assignment(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                other = args = [1]
+                super(Child, self).method(*args)
+
+        def operator_assignment(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                args = [1]
+                args += [2]
+                super(Child, self).method(*args)
+
+        def deleted_name(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                del args
+                super(Child, self).method(*args)
+
+        def attribute_target(self, args: tuple[int, int]) -> None:
+            self.other = [1]
+            super(Child, self).method(*args)
+
+        def loop_target(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                for args in [[1]]:
+                    super(Child, self).method(*args)
+
+        def destructuring_loop_target(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                for args, _ in [([1], 0)]:
+                    super(Child, self).method(*args)
+
+        def starred_loop_target(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                for [*args] in [[1]]:
+                    super(Child, self).method(*args)
+
+        def list_comprehension(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                [super(Child, self).method(*args) for args in [[1]]]
+
+        def set_comprehension(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                {super(Child, self).method(*args) for args in [[1]]}
+
+        def dict_comprehension(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                {0: super(Child, self).method(*args) for args in [[1]]}
+
+        def generator_expression(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                list(super(Child, self).method(*args) for args in [[1]])
+
+        def destructuring_comprehension(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                [super(Child, self).method(*args) for args, _ in [([1], 0)]]
+
+        def starred_comprehension(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                [super(Child, self).method(*args) for [*args] in [[1]]]
+
+        def later_generator(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                [super(Child, self).method(*args) for _ in [0] for args in [[1]]]
+
+        def comprehension_walrus(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                [(args := [1]) for _ in [0]]
+                super(Child, self).method(*args)
+
+        def assignment_expression(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                if args := [1]:
+                    super(Child, self).method(*args)
+
+        def context_manager(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                with values() as args:
+                    super(Child, self).method(*args)
+
+        def destructuring_context_manager(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                with pair_values() as (args, _):
+                    super(Child, self).method(*args)
+
+        def starred_context_manager(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                with values() as [*args]:
+                    super(Child, self).method(*args)
+
+        def later_context_manager(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                with ignored(), values() as args:
+                    super(Child, self).method(*args)
+
+        def exception_target(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                try:
+                    pass
+                except Exception as args:  # type: ignore[assignment]
+                    super(Child, self).method(*args)  # type: ignore[misc]
+
+        def match_capture(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                match [1]:
+                    case args:
+                        super(Child, self).method(*args)
+
+        def match_mapping_capture(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                match {"a": [1]}:
+                    case {"a": args}:
+                        super(Child, self).method(*args)
+
+        def match_mapping_rest(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                match {"a": [1]}:
+                    case {**args}:
+                        super(Child, self).method(*args)  # type: ignore[arg-type]
+
+        def match_sequence_capture(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                match [[1]]:
+                    case [args]:
+                        super(Child, self).method(*args)
+
+        def match_starred_capture(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                match [1]:
+                    case [*args]:
+                        super(Child, self).method(*args)
+
+        def match_class_capture(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                match Values():
+                    case Values(__iter__=args):
+                        super(Child, self).method(*args())
+
+        def match_or_capture(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                match [1]:
+                    case ([1] as args) | ([2] as args):
+                        super(Child, self).method(*args)
+
+        def match_value_pattern(self, args: tuple[int, int]) -> None:
+            def inner(other: list[int]) -> None:
+                match other:
+                    case [Values.__module__]:
+                        pass
+                    case None:
+                        pass
+
+        def global_declaration(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                global args
+                super(Child, self).method(*args)
+
+        def nonlocal_declaration(self, args: tuple[int, int]) -> None:
+            def middle() -> None:
+                args = [1]
+
+                def inner() -> None:
+                    nonlocal args
+                    super(Child, self).method(*args)
+
+        def decorated_function(self, args: tuple[int, int]) -> None:
+            @decorate  # type: ignore[no-redef]
+            def args() -> None:
+                pass
+
+            super(Child, self).method(*args)
+
+        def class_definition(self, args: tuple[int, int]) -> None:
+            class args:  # type: ignore[no-redef]
+                pass
+
+            super(Child, self).method(*args)  # type: ignore[misc]
+
+        def imported_name(self, args: tuple[int, int]) -> None:
+            import glob as args  # type: ignore[no-redef,assignment]
+
+            super(Child, self).method(*args)  # type: ignore[misc]
+
+        def imported_from_name(self, args: tuple[int, int]) -> None:
+            from glob import glob as args  # type: ignore[no-redef,assignment]
+
+            super(Child, self).method(*args)  # type: ignore[misc]
+
+        def still_reported(self, args: tuple[int, int]) -> None:
+            super(Child, self).method(*args)
+  out: |-
+    main:73: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:242: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_fixed_tuple_shadowing_async
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from collections.abc import AsyncIterator
+    from contextlib import asynccontextmanager
+
+    async def alist() -> AsyncIterator[list[int]]:
+        yield [1]
+
+    async def apairs() -> AsyncIterator[tuple[list[int], int]]:
+        yield ([1], 0)
+
+    @asynccontextmanager
+    async def avalues() -> AsyncIterator[list[int]]:
+        yield [1]
+
+    class Base:
+        def method(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def async_loop_target(self, args: tuple[int, int]) -> None:
+            async def inner() -> None:
+                async for args in alist():
+                    super(Child, self).method(*args)
+
+        def destructuring_async_loop(self, args: tuple[int, int]) -> None:
+            async def inner() -> None:
+                async for args, _ in apairs():
+                    super(Child, self).method(*args)
+
+        def async_context_manager(self, args: tuple[int, int]) -> None:
+            async def inner() -> None:
+                async with avalues() as args:
+                    super(Child, self).method(*args)
+
+        def async_comprehension(self, args: tuple[int, int]) -> None:
+            async def inner() -> None:
+                [super(Child, self).method(*args) async for args in alist()]
+
+        def still_reported(self, args: tuple[int, int]) -> None:
+            super(Child, self).method(*args)
+  out: |-
+    main:39: error: Too many positional arguments for "method" of "Base"  [call-arg]

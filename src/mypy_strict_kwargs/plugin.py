@@ -35,7 +35,10 @@ from mypy.nodes import (
     FuncDef,
     FuncItem,
     GeneratorExpr,
+    GlobalDecl,
     IfStmt,
+    Import,
+    ImportFrom,
     IndexExpr,
     LambdaExpr,
     ListComprehension,
@@ -43,6 +46,7 @@ from mypy.nodes import (
     MatchStmt,
     MemberExpr,
     NameExpr,
+    NonlocalDecl,
     OperatorAssignmentStmt,
     OpExpr,
     OverloadedFuncDef,
@@ -99,6 +103,14 @@ from mypy.types import (
 _CallExprContainer = Expression | Statement
 
 
+@dataclass(kw_only=True)
+class _Scope:
+    """Names bound while collecting calls from one Python scope."""
+
+    names: set[str]
+    is_comprehension: bool
+
+
 class _CollectedCalls(list[CallExpr]):
     """Call expressions and fixed tuple lengths visible to each call."""
 
@@ -106,10 +118,129 @@ class _CollectedCalls(list[CallExpr]):
         """Initialize an empty collection."""
         super().__init__()
         self.fixed_tuple_lengths: dict[CallExpr, dict[str, int]] = {}
-        # Parameter names bound by scopes already attached to each call, so
-        # that an inner scope's name shadows an outer scope's parameter of
-        # the same name even when the inner binding is not a fixed tuple.
-        self.bound_parameter_names: dict[CallExpr, set[str]] = {}
+        # Names bound by scopes already attached to each call, so that an
+        # inner scope's binding shadows an outer scope's parameter of the
+        # same name even when the inner binding is not a fixed tuple.
+        self.bound_names: dict[CallExpr, set[str]] = {}
+        self._scopes: list[_Scope] = [
+            _Scope(names=set(), is_comprehension=False)
+        ]
+
+    def push_scope(self, *, is_comprehension: bool) -> None:
+        """Start collecting the names bound by a new scope."""
+        self._scopes.append(
+            _Scope(names=set(), is_comprehension=is_comprehension)
+        )
+
+    def pop_scope(self) -> set[str]:
+        """Finish a scope and return the names it binds."""
+        return self._scopes.pop().names
+
+    def bind(self, names: set[str], /) -> None:
+        """Record names bound by the scope being collected."""
+        self._scopes[-1].names |= names
+
+    def bind_in_function_scope(self, names: set[str], /) -> None:
+        """Record names bound in the nearest enclosing function scope.
+
+        An assignment expression inside a comprehension binds in the
+        scope containing the comprehension, not in the comprehension.
+        """
+        function_scopes = [
+            scope for scope in self._scopes if not scope.is_comprehension
+        ]
+        function_scopes[-1].names |= names
+
+
+def _binding_target_names(target: Expression, /) -> set[str]:
+    """Return the names bound by an assignment or loop target."""
+    match target:
+        case NameExpr(name=name):
+            return {name}
+        case TupleExpr(items=items) | ListExpr(items=items):
+            names: set[str] = set()
+            for item in items:
+                names |= _binding_target_names(item)
+            return names
+        case StarExpr(expr=expr):
+            return _binding_target_names(expr)
+        case _:
+            return set()
+
+
+def _patterns_bound_names(patterns: list[Pattern], /) -> set[str]:
+    """Return the names captured by a list of match patterns."""
+    names: set[str] = set()
+    for pattern in patterns:
+        names |= _pattern_bound_names(pattern)
+    return names
+
+
+def _as_pattern_bound_names(
+    *,
+    inner_pattern: Pattern | None,
+    name: Expression | None,
+) -> set[str]:
+    """Return the names captured by an as pattern."""
+    names: set[str] = set()
+    if inner_pattern is not None:
+        names |= _pattern_bound_names(inner_pattern)
+    if name is not None:
+        names |= _binding_target_names(name)
+    return names
+
+
+def _mapping_pattern_bound_names(
+    *,
+    values: list[Pattern],
+    rest: Expression | None,
+) -> set[str]:
+    """Return the names captured by a mapping pattern."""
+    names = _patterns_bound_names(values)
+    if rest is not None:
+        names |= _binding_target_names(rest)
+    return names
+
+
+def _pattern_bound_names(pattern: Pattern, /) -> set[str]:
+    """Return the names captured by a match pattern."""
+    match pattern:
+        case AsPattern(pattern=inner_pattern, name=name):
+            return _as_pattern_bound_names(
+                inner_pattern=inner_pattern,
+                name=name,
+            )
+        case OrPattern(patterns=patterns) | SequencePattern(patterns=patterns):
+            return _patterns_bound_names(patterns)
+        case StarredPattern(capture=capture):
+            return set() if capture is None else _binding_target_names(capture)
+        case MappingPattern(values=values, rest=rest):
+            return _mapping_pattern_bound_names(values=values, rest=rest)
+        case ClassPattern(positionals=positionals, keyword_values=keywords):
+            return _patterns_bound_names([*positionals, *keywords])
+        case _:
+            return set()
+
+
+def _apply_scope_to_calls(
+    *,
+    calls: _CollectedCalls,
+    first_call_index: int,
+    names: set[str],
+    fixed_tuple_lengths: dict[str, int],
+) -> None:
+    """Attach the bindings of one scope to the calls it contains.
+
+    Inner scopes are collected first, so a name they already bound is
+    left alone: the nearest binding wins.
+    """
+    for call in calls[first_call_index:]:
+        bound_names = calls.bound_names.setdefault(call, set())
+        lengths = calls.fixed_tuple_lengths.setdefault(call, {})
+        for name in names - bound_names:
+            bound_names.add(name)
+            if name in fixed_tuple_lengths:
+                lengths[name] = fixed_tuple_lengths[name]
 
 
 # Special methods which Python and ``mypy`` invoke implicitly, mapped to
@@ -554,9 +685,11 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
         case AssignmentStmt(rvalue=rvalue, lvalues=lvalues):
             _collect_call_exprs(rvalue, calls)
             for lvalue in lvalues:
+                calls.bind(_binding_target_names(lvalue))
                 _collect_call_exprs(lvalue, calls)
         case OperatorAssignmentStmt(rvalue=rvalue, lvalue=lvalue):
             _collect_call_exprs(rvalue, calls)
+            calls.bind(_binding_target_names(lvalue))
             _collect_call_exprs(lvalue, calls)
         case WhileStmt(expr=expr, body=body, else_body=else_body):
             _collect_call_exprs(expr, calls)
@@ -569,6 +702,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             body=body,
             else_body=else_body,
         ):
+            calls.bind(_binding_target_names(index))
             _collect_call_exprs(index, calls)
             _collect_call_exprs(expr, calls)
             _collect_call_exprs(body, calls)
@@ -582,6 +716,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             if msg is not None:
                 _collect_call_exprs(msg, calls)
         case DelStmt(expr=expr):
+            calls.bind(_binding_target_names(expr))
             _collect_call_exprs(expr, calls)
         case IfStmt(expr=conditions, body=body, else_body=else_body):
             for condition in conditions:
@@ -614,6 +749,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 _collect_call_exprs(handler, calls)
             for variable in variables:
                 if variable is not None:
+                    calls.bind(_binding_target_names(variable))
                     _collect_call_exprs(variable, calls)
             if else_body is not None:
                 _collect_call_exprs(else_body, calls)
@@ -627,6 +763,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             ):
                 _collect_call_exprs(expression, calls)
                 if target is not None:
+                    calls.bind(_binding_target_names(target))
                     _collect_call_exprs(target, calls)
             _collect_call_exprs(body, calls)
         case MatchStmt(
@@ -642,6 +779,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 bodies,
                 strict=True,
             ):
+                calls.bind(_pattern_bound_names(pattern))
                 _collect_call_exprs_from_pattern(pattern, calls)
                 if guard is not None:
                     _collect_call_exprs(guard, calls)
@@ -649,12 +787,15 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
         case Block(body=body):
             for body_statement in body:
                 _collect_call_exprs(body_statement, calls)
-        case FuncDef():
+        case FuncDef(name=name):
+            calls.bind({name})
             _collect_call_exprs_from_func_item(statement, calls)
-        case OverloadedFuncDef(items=items):
+        case OverloadedFuncDef(items=items, name=name):
+            calls.bind({name})
             for overload_item in items:
                 _collect_call_exprs(overload_item, calls)
-        case Decorator(func=func, decorators=decorators):
+        case Decorator(func=func, decorators=decorators, name=name):
+            calls.bind({name})
             _collect_call_exprs(func, calls)
             for decorator in decorators:
                 _collect_call_exprs(decorator, calls)
@@ -663,7 +804,9 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             base_type_exprs=base_type_exprs,
             metaclass=metaclass,
             keywords=keywords,
+            name=name,
         ):
+            calls.bind({name})
             for decorator in decorators:
                 _collect_call_exprs(decorator, calls)
             for base_type_expression in base_type_exprs:
@@ -672,6 +815,22 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 _collect_call_exprs(metaclass, calls)
             for keyword_expression in keywords.values():
                 _collect_call_exprs(keyword_expression, calls)
+        case GlobalDecl(names=names) | NonlocalDecl(names=names):
+            calls.bind(set(names))
+        case Import(ids=ids):
+            calls.bind(
+                {
+                    as_name or identifier.split(sep=".", maxsplit=1)[0]
+                    for identifier, as_name in ids
+                }
+            )
+        case ImportFrom(names=imported_names):
+            calls.bind(
+                {
+                    as_name or imported_name
+                    for imported_name, as_name in imported_names
+                }
+            )
         case _:
             pass
 
@@ -686,31 +845,32 @@ def _collect_call_exprs_from_func_item(
         if argument.initializer is not None:
             _collect_call_exprs(argument.initializer, calls)
     first_body_call_index = len(calls)
+    calls.push_scope(is_comprehension=False)
     _collect_call_exprs(func_item.body, calls)
+    rebound_names = calls.pop_scope()
 
+    parameter_names = {
+        argument.variable.name for argument in func_item.arguments
+    }
     fixed_tuple_lengths = {
         argument.variable.name: fixed_tuple_length
         for argument in func_item.arguments
-        if (
+        # A parameter which the body binds again no longer holds the
+        # annotated tuple everywhere in the scope.
+        if argument.variable.name not in rebound_names
+        and (
             fixed_tuple_length := _fixed_tuple_annotation_length(
                 annotation=argument.type_annotation,
             )
         )
         is not None
     }
-    for call in calls[first_body_call_index:]:
-        # Inner scopes are collected first, so their parameters shadow this
-        # enclosing scope's parameters of the same name -- even when the
-        # inner binding is not a fixed tuple.
-        bound_names = calls.bound_parameter_names.setdefault(call, set())
-        lengths = calls.fixed_tuple_lengths.setdefault(call, {})
-        for argument in func_item.arguments:
-            name = argument.variable.name
-            if name in bound_names:
-                continue
-            bound_names.add(name)
-            if name in fixed_tuple_lengths:
-                lengths[name] = fixed_tuple_lengths[name]
+    _apply_scope_to_calls(
+        calls=calls,
+        first_call_index=first_body_call_index,
+        names=parameter_names | rebound_names,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+    )
 
 
 _TUPLE_ANNOTATION_NAMES = frozenset(
@@ -766,7 +926,43 @@ def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
     return length
 
 
-def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
+def _collect_call_exprs_from_comprehension(
+    *,
+    indices: list[Expression],
+    sequences: list[Expression],
+    condlists: list[list[Expression]],
+    results: list[Expression],
+    calls: _CollectedCalls,
+) -> None:
+    """Collect call expressions from a comprehension.
+
+    A comprehension is its own scope, so its targets shadow bindings of
+    the same name in enclosing scopes.
+    """
+    first_call_index = len(calls)
+    calls.push_scope(is_comprehension=True)
+    for index, sequence, conditions in zip(
+        indices,
+        sequences,
+        condlists,
+        strict=True,
+    ):
+        _collect_call_exprs(sequence, calls)
+        calls.bind(_binding_target_names(index))
+        _collect_call_exprs(index, calls)
+        for condition in conditions:
+            _collect_call_exprs(condition, calls)
+    for result in results:
+        _collect_call_exprs(result, calls)
+    _apply_scope_to_calls(
+        calls=calls,
+        first_call_index=first_call_index,
+        names=calls.pop_scope(),
+        fixed_tuple_lengths={},
+    )
+
+
+def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches
     expression: Expression,
     calls: _CollectedCalls,
     /,
@@ -811,6 +1007,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             if kind == REVEAL_TYPE and expr is not None:
                 _collect_call_exprs(expr, calls)
         case AssignmentExpr(target=target, value=value):
+            calls.bind_in_function_scope(_binding_target_names(target))
             _collect_call_exprs(target, calls)
             _collect_call_exprs(value, calls)
         case UnaryExpr(expr=expr):
@@ -850,17 +1047,13 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             condlists=condlists,
             left_expr=left_expr,
         ):
-            for index, sequence, conditions in zip(
-                indices,
-                sequences,
-                condlists,
-                strict=True,
-            ):
-                _collect_call_exprs(sequence, calls)
-                _collect_call_exprs(index, calls)
-                for condition in conditions:
-                    _collect_call_exprs(condition, calls)
-            _collect_call_exprs(left_expr, calls)
+            _collect_call_exprs_from_comprehension(
+                indices=indices,
+                sequences=sequences,
+                condlists=condlists,
+                results=[left_expr],
+                calls=calls,
+            )
         case DictionaryComprehension(
             indices=indices,
             sequences=sequences,
@@ -868,18 +1061,13 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             key=key,
             value=value,
         ):
-            for index, sequence, conditions in zip(
-                indices,
-                sequences,
-                condlists,
-                strict=True,
-            ):
-                _collect_call_exprs(sequence, calls)
-                _collect_call_exprs(index, calls)
-                for condition in conditions:
-                    _collect_call_exprs(condition, calls)
-            _collect_call_exprs(key, calls)
-            _collect_call_exprs(value, calls)
+            _collect_call_exprs_from_comprehension(
+                indices=indices,
+                sequences=sequences,
+                condlists=condlists,
+                results=[key, value],
+                calls=calls,
+            )
         case (
             ListComprehension(generator=generator)
             | SetComprehension(
