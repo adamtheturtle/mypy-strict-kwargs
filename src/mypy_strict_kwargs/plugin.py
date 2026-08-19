@@ -241,14 +241,24 @@ class _CollectedCalls(list[CallExpr]):
     def _bound_scopes(self, *, name: str) -> list[_Scope]:
         """Return the scopes an assignment to a name binds in.
 
-        An assignment to a ``nonlocal`` name belongs to an enclosing
-        function scope, so every enclosing scope loses what it knew.
+        An assignment to a ``nonlocal`` name belongs to the nearest
+        enclosing function scope which binds that name.  Scopes beyond
+        that one keep what they knew, because ``nonlocal`` never reaches
+        them.  A name no enclosing scope binds yet may be an enclosing
+        parameter, which is not recorded as a binding, so every enclosing
+        scope loses what it knew.
         """
         if name not in self._scopes[-1].nonlocal_names:
             return [self._scopes[-1]]
-        return [scope for scope in self._scopes if not scope.is_comprehension][
-            :-1
-        ]
+        enclosing = [
+            scope for scope in self._scopes if not scope.is_comprehension
+        ][:-1]
+        bound: list[_Scope] = []
+        for scope in reversed(enclosing):
+            bound.append(scope)
+            if name in scope.names:
+                break
+        return bound
 
     def bind_in_function_scope(self, names: set[str], /) -> None:
         """Record names bound in the nearest enclosing function scope.
