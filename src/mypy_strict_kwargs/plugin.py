@@ -383,6 +383,68 @@ def _write_debug_fullname(*, fullname: str, path: str) -> None:
     sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
 
 
+# ``functools.partial`` and ``functools.partialmethod`` forward their
+# extra positional arguments to the callable they wrap, so those
+# arguments are checked against that callable rather than against the
+# signature of ``partial`` itself.
+_PARTIAL_FULLNAMES = frozenset(
+    {"functools.partial", "functools.partialmethod"}
+)
+
+
+def _callable_description(*, name: str) -> str:
+    """Return the way ``mypy`` names a callable in an error message."""
+    parts = name.split(sep=" of ", maxsplit=1)
+    if len(parts) == 1:
+        return f'"{parts[0]}"'
+    return f'"{parts[0]}" of "{parts[1]}"'
+
+
+def _check_partial_arguments(
+    *,
+    ctx: FunctionSigContext | MethodSigContext,
+    fullname: str,
+    ignore_names: list[str],
+) -> None:
+    """Report parameters which ``partial`` binds by position."""
+    # Pad so that a signature with fewer formal arguments than expected
+    # cannot raise.
+    argument_groups = [*ctx.args, [], []]
+    wrapped_arguments, bound_arguments = argument_groups[0], argument_groups[1]
+    if not wrapped_arguments or not bound_arguments:
+        return
+
+    wrapped = get_proper_type(
+        typ=ctx.api.get_expression_type(node=wrapped_arguments[0])
+    )
+    if not isinstance(wrapped, CallableType):
+        return
+    if wrapped.name is None or wrapped.definition is None:
+        return
+
+    # ``partialmethod`` binds arguments after the ``self`` parameter,
+    # which the descriptor supplies later.
+    skip_bound_argument = fullname == "functools.partialmethod"
+    transformed = _transform_callable_type(
+        signature=wrapped,
+        fullname=wrapped.definition.fullname,
+        ignore_names=ignore_names,
+        skip_bound_argument=skip_bound_argument,
+        preserved_positional_argument_count=0,
+    )
+    if _formals_disallow_positional(
+        transformed=transformed,
+        first_formal_index=1 if skip_bound_argument else 0,
+        positional_argument_count=len(bound_arguments),
+    ):
+        description = _callable_description(name=wrapped.name)
+        ctx.api.fail(
+            f"Too many positional arguments for {description}",
+            ctx.context,
+            code=CALL_ARG,
+        )
+
+
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
@@ -393,6 +455,13 @@ def _transform_signature(
     """Transform positional arguments to keyword-only arguments."""
     if debug:
         _write_debug_fullname(fullname=fullname, path=ctx.api.path)
+
+    if fullname in _PARTIAL_FULLNAMES:
+        _check_partial_arguments(
+            ctx=ctx,
+            fullname=fullname,
+            ignore_names=ignore_names,
+        )
 
     return _transform_callable_type(
         signature=ctx.default_signature,
@@ -708,6 +777,28 @@ def _spread_positional_count(
             )
 
 
+def _formals_disallow_positional(
+    *,
+    transformed: CallableType,
+    first_formal_index: int,
+    positional_argument_count: int,
+) -> bool:
+    """Return whether positions reach a keyword-only parameter."""
+    formal_arg_index = first_formal_index
+    for _ in range(positional_argument_count):
+        if formal_arg_index >= len(transformed.arg_kinds):
+            return False
+
+        formal_arg_kind = transformed.arg_kinds[formal_arg_index]
+        if formal_arg_kind == ArgKind.ARG_STAR:
+            return False
+        formal_arg_index += 1
+
+        if formal_arg_kind in {ArgKind.ARG_NAMED, ArgKind.ARG_NAMED_OPT}:
+            return True
+    return False
+
+
 def _call_disallows_positional_argument(
     *,
     call: CallExpr,
@@ -726,38 +817,27 @@ def _call_disallows_positional_argument(
         preserved_positional_argument_count=0,
     )
 
-    formal_arg_index = 1 if skip_bound_argument else 0
+    positional_argument_counts: list[int] = []
     for actual_arg, actual_arg_kind in zip(
         call.args,
         call.arg_kinds,
         strict=True,
     ):
         if actual_arg_kind == ArgKind.ARG_POS:
-            positional_argument_count = 1
+            positional_argument_counts.append(1)
         elif actual_arg_kind == ArgKind.ARG_STAR:
-            positional_argument_count = _spread_positional_count(
-                expression=actual_arg,
-                fixed_tuple_lengths=fixed_tuple_lengths,
+            positional_argument_counts.append(
+                _spread_positional_count(
+                    expression=actual_arg,
+                    fixed_tuple_lengths=fixed_tuple_lengths,
+                )
             )
-        else:
-            continue
 
-        for _ in range(positional_argument_count):
-            if formal_arg_index >= len(transformed.arg_kinds):
-                return False
-
-            formal_arg_kind = transformed.arg_kinds[formal_arg_index]
-            if formal_arg_kind == ArgKind.ARG_STAR:
-                return False
-            formal_arg_index += 1
-
-            if formal_arg_kind in {
-                ArgKind.ARG_NAMED,
-                ArgKind.ARG_NAMED_OPT,
-            }:
-                return True
-
-    return False
+    return _formals_disallow_positional(
+        transformed=transformed,
+        first_formal_index=1 if skip_bound_argument else 0,
+        positional_argument_count=sum(positional_argument_counts),
+    )
 
 
 def _super_call_disallows_positional_argument(

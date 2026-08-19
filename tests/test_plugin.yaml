@@ -1909,3 +1909,46 @@
     main:47: error: Too many positional arguments for "method" of "B2"  [call-arg]
     main:50: error: Too many positional arguments for "method" of "B2"  [call-arg]
     main:53: error: Too many positional arguments for "method" of "B2"  [call-arg]
+
+- case: functools_partial_bound_arguments
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from functools import partial, partialmethod
+
+    def function(value: int) -> None: ...
+
+    def positional_only(value: int, /) -> None: ...
+
+    class C:
+        def __init__(self, value: int) -> None: ...
+
+        def method(self, value: int) -> None: ...
+
+        def implementation(self, value: int) -> None: ...
+
+        def implementation_positional(self, value: int, /) -> None: ...
+
+        bound = partialmethod(implementation, 1)
+        bound_ok = partialmethod(implementation, value=1)
+        bound_positional = partialmethod(implementation_positional, 1)
+
+    c = C(value=1)
+    a = partial(function, 1)
+    a_ok = partial(function, value=1)
+    b = partial(c.method, 1)
+    d = partial(C, 1)
+    e = partial(positional_only, 1)
+    f = partial(function)
+    g = partial(lambda value: None, 1)
+
+    class Callable:
+        def __call__(self, value: int) -> None: ...
+
+    h = partial(Callable(), 1)
+  out: |-
+    main:16: error: Too many positional arguments for "implementation" of "C"  [call-arg]
+    main:21: error: Too many positional arguments for "function"  [call-arg]
+    main:23: error: Too many positional arguments for "method" of "C"  [call-arg]
+    main:24: error: Too many positional arguments for "C"  [call-arg]
