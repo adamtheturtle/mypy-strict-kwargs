@@ -357,18 +357,82 @@ def _super_method_mro(
     return ctx.cls.info.mro[super_type_index + 1 :]
 
 
-def _leading_positional_count(*, items: list[Expression]) -> int:
-    """Return the number of items before the first ``*`` spread.
+def _known_sequence_length(
+    *,
+    expression: Expression,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length of a sequence expression, if it is known.
 
-    A ``*spread`` inside a sequence literal has no statically known length,
-    so only the items preceding it occupy known positions.
+    ``None`` means that the length is not statically known.
+    """
+    match expression:
+        case TupleExpr(items=items) | ListExpr(items=items):
+            total = 0
+            for item in items:
+                if not isinstance(item, StarExpr):
+                    total += 1
+                    continue
+                spread_length = _known_sequence_length(
+                    expression=item.expr,
+                    fixed_tuple_lengths=fixed_tuple_lengths,
+                )
+                if spread_length is None:
+                    return None
+                total += spread_length
+            return total
+        case NameExpr(name=name):
+            return fixed_tuple_lengths.get(name)
+        case _:
+            return None
+
+
+def _leading_positional_count(
+    *,
+    items: list[Expression],
+    fixed_tuple_lengths: dict[str, int],
+) -> int:
+    """Return the number of items which occupy known positions.
+
+    A ``*spread`` of unknown length inside a sequence literal makes every
+    later item impossible to place, so counting stops there.  A spread whose
+    length is known contributes that many positions.
     """
     leading_count = 0
     for item in items:
-        if isinstance(item, StarExpr):
+        if not isinstance(item, StarExpr):
+            leading_count += 1
+            continue
+        spread_length = _known_sequence_length(
+            expression=item.expr,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+        if spread_length is None:
             break
-        leading_count += 1
+        leading_count += spread_length
     return leading_count
+
+
+def _spread_positional_count(
+    *,
+    expression: Expression,
+    fixed_tuple_lengths: dict[str, int],
+) -> int:
+    """Return positions known to be filled by a ``*`` argument."""
+    match expression:
+        case TupleExpr(items=items) | ListExpr(items=items):
+            return _leading_positional_count(
+                items=items,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case _:
+            return (
+                _known_sequence_length(
+                    expression=expression,
+                    fixed_tuple_lengths=fixed_tuple_lengths,
+                )
+                or 0
+            )
 
 
 def _call_disallows_positional_argument(
@@ -398,20 +462,10 @@ def _call_disallows_positional_argument(
         if actual_arg_kind == ArgKind.ARG_POS:
             positional_argument_count = 1
         elif actual_arg_kind == ArgKind.ARG_STAR:
-            if isinstance(actual_arg, TupleExpr | ListExpr):
-                # Only the items before a nested ``*spread`` occupy known
-                # positions; the spread itself has no statically known
-                # length, so anything after it cannot be placed.
-                positional_argument_count = _leading_positional_count(
-                    items=actual_arg.items,
-                )
-            elif isinstance(actual_arg, NameExpr):
-                positional_argument_count = fixed_tuple_lengths.get(
-                    actual_arg.name,
-                    0,
-                )
-            else:
-                positional_argument_count = 0
+            positional_argument_count = _spread_positional_count(
+                expression=actual_arg,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
         else:
             continue
 

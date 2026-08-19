@@ -1,0 +1,2 @@
+Check positional arguments supplied to ``super()`` methods through nested
+spreads of known length.
