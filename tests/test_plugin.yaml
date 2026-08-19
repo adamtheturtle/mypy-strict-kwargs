@@ -2318,3 +2318,181 @@
     main:31: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:35: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:57: error: Too many arguments for "method" of "Base"  [call-arg]
+
+- case: super_declared_expression_lengths
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    import operator
+    from typing import assert_type, cast
+
+    def get_args() -> tuple[int]:
+        return (1,)
+
+    async def get_args_async() -> tuple[int]:
+        return (1,)
+
+    def get_unknown() -> tuple[int, ...]:
+        return (1,)
+
+    def untyped():
+        return (1,)
+
+    class Holder:
+        args: tuple[int] = (1,)
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    class Child(Base):
+        args: tuple[int] = (1,)
+        variable: tuple[int, ...] = (1,)
+        holder = Holder()
+
+        def i613(self) -> None:
+            super().method(*get_args())
+
+        def i614(self) -> None:
+            super().method(*self.args)
+
+        def i652(self, value: object) -> None:
+            super().method(*cast(tuple[int], value))
+
+        def i666(self) -> None:
+            super().method(*assert_type((1,), tuple[int]))
+
+        def i668(self) -> None:
+            super().method(*operator.getitem(((1,),), 0))
+
+        async def i671(self) -> None:
+            super().method(*await get_args_async())
+
+        def unknown_call(self) -> None:
+            super().method(*get_unknown())
+
+        def unknown_attribute(self) -> None:
+            super().method(*self.variable)
+
+        def untyped_call(self) -> None:
+            super().method(*untyped())  # type: ignore[no-untyped-call]
+
+        def selected_callee(self) -> None:
+            super().method(*[get_args][0]())
+
+        def nested_attribute(self) -> None:
+            super().method(*self.holder.args)
+  out: |-
+    main:29: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:32: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:35: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:38: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:41: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:44: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_context_manager_fixed_tuples
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from collections.abc import AsyncIterator, Generator, Iterator
+    from contextlib import asynccontextmanager, contextmanager
+    from typing import TypeVar
+
+    T = TypeVar("T")
+
+    def keep(function: T) -> T:
+        return function
+
+    @contextmanager
+    def values() -> Iterator[tuple[int]]:
+        yield (1,)
+
+    @asynccontextmanager
+    async def async_values() -> AsyncIterator[tuple[int]]:
+        yield (1,)
+
+    @keep
+    @contextmanager
+    def outer_decorated() -> Iterator[tuple[int]]:
+        yield (1,)
+
+    @contextmanager
+    def unknown_values() -> Iterator[tuple[int, ...]]:
+        yield (1,)
+
+    @contextmanager
+    def generator_values() -> Generator[tuple[int], None, None]:
+        yield (1,)
+
+    @contextmanager
+    def unannotated():
+        yield (1,)
+
+    class Manual:
+        def __enter__(self) -> tuple[int]:
+            return (1,)
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def plain_manager() -> Manual:
+        return Manual()
+
+    @keep
+    def decorated_manager() -> Manual:
+        return Manual()
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    class Child(Base):
+        def context_manager(self) -> None:
+            with values() as args:
+                super().method(*args)
+
+        async def async_context_manager(self) -> None:
+            async with async_values() as args:
+                super().method(*args)
+
+        def outer_decorated_manager(self) -> None:
+            with outer_decorated() as args:
+                super().method(*args)
+
+        def selected_manager(self) -> None:
+            with [values][0]() as args:
+                super().method(*args)
+
+        def variable_manager(self, manager: Manual) -> None:
+            with manager as args:
+                super().method(*args)
+
+        def undecorated_manager(self) -> None:
+            with plain_manager() as args:
+                super().method(*args)
+
+        def variable_length_manager(self) -> None:
+            with unknown_values() as args:
+                super().method(*args)
+
+        def generator_manager(self) -> None:
+            with generator_values() as args:
+                super().method(*args)
+
+        def unannotated_manager(self) -> None:
+            with unannotated() as args:  # type: ignore[no-untyped-call]
+                super().method(*args)
+
+        def decorated_plain_manager(self) -> None:
+            with decorated_manager() as args:
+                super().method(*args)
+
+        def manual_manager(self) -> None:
+            with Manual() as args:
+                super().method(*args)
+  out: |-
+    main:56: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:60: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:64: error: Too many positional arguments for "method" of "Base"  [call-arg]

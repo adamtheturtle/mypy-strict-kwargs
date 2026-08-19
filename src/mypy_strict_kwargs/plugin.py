@@ -11,6 +11,7 @@ from typing import Any, NoReturn, assert_never
 
 from mypy.errorcodes import CALL_ARG
 from mypy.errors import CompileError
+from mypy.exprtotype import TypeTranslationError, expr_to_unanalyzed_type
 from mypy.nodes import (
     REVEAL_TYPE,
     ArgKind,
@@ -989,12 +990,217 @@ def _leading_positional_count(
     return leading_count
 
 
+_ASSERT_TYPE_FULLNAMES = frozenset(
+    {"typing.assert_type", "typing_extensions.assert_type"}
+)
+_CAST_FULLNAMES = frozenset({"typing.cast", "typing_extensions.cast"})
+_GET_ITEM_FULLNAMES = frozenset(
+    {
+        "_operator.__getitem__",
+        "_operator.getitem",
+        "operator.__getitem__",
+        "operator.getitem",
+    }
+)
+
+
+def _returned_annotation(
+    *,
+    node: SymbolNode | None,
+) -> Type | None:
+    """Return the declared return type of a callable definition."""
+    match node:
+        case FuncDef() as function:
+            signature = function.type
+        case Decorator() as decorator:
+            signature = decorator.func.type
+        case _:
+            return None
+    if not isinstance(signature, CallableType):
+        return None
+    return signature.ret_type
+
+
+def _annotation_from_expression(
+    *,
+    expression: Expression,
+    resolver: "_AnnotationResolver",
+) -> Type | None:
+    """Return the annotation an expression spells, if it spells one."""
+    try:
+        return expr_to_unanalyzed_type(
+            expr=expression,
+            options=resolver.api.options,
+        )
+    except TypeTranslationError:  # pragma: no cover
+        # An invalid ``cast()`` target is reported by the type checker
+        # itself, so this only guards against a malformed syntax tree.
+        return None
+
+
+def _called_expression_length(
+    *,
+    expression: CallExpr,
+    fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
+) -> int | None:
+    """Return the length a call is known to produce."""
+    name = _dotted_name(expression=expression.callee)
+    if name is None:
+        return None
+    fullname = resolver.fullname(name)
+    arguments = expression.args
+
+    if fullname in _ASSERT_TYPE_FULLNAMES and arguments:
+        return _expression_length(
+            expression=arguments[0],
+            fixed_tuple_lengths=fixed_tuple_lengths,
+            resolver=resolver,
+            class_info=class_info,
+        )
+    if fullname in _CAST_FULLNAMES and arguments:
+        return _fixed_tuple_annotation_length(
+            annotation=_annotation_from_expression(
+                expression=arguments[0],
+                resolver=resolver,
+            ),
+            resolver=resolver,
+        )
+    if fullname in _GET_ITEM_FULLNAMES and len(arguments) == 2:  # noqa: PLR2004
+        item = _selected_item(base=arguments[0], index=arguments[1])
+        return (
+            None
+            if item is None
+            else _expression_length(
+                expression=item,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+                resolver=resolver,
+                class_info=class_info,
+            )
+        )
+    return _fixed_tuple_annotation_length(
+        annotation=_returned_annotation(node=resolver.node(name)),
+        resolver=resolver,
+    )
+
+
+def _attribute_annotation(
+    *,
+    expression: MemberExpr,
+    class_info: TypeInfo,
+) -> Type | None:
+    """Return the annotation of an attribute of the checked class."""
+    if not isinstance(expression.expr, NameExpr):
+        return None
+    symbol = class_info.get(name=expression.name)
+    node = None if symbol is None else symbol.node
+    return node.type if isinstance(node, Var) else None
+
+
+def _resolved_expression_length(
+    *,
+    expression: Expression,
+    fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
+) -> int | None:
+    """Return the length an expression produces, using declarations.
+
+    This resolves forms whose length comes from a declaration rather
+    than from the expression itself, such as a call to an annotated
+    function or an annotated attribute.
+    """
+    match expression:
+        case AwaitExpr(expr=awaited):
+            return _expression_length(
+                expression=awaited,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+                resolver=resolver,
+                class_info=class_info,
+            )
+        case CallExpr() as call:
+            return _called_expression_length(
+                expression=call,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+                resolver=resolver,
+                class_info=class_info,
+            )
+        case MemberExpr() as member:
+            return _fixed_tuple_annotation_length(
+                annotation=_attribute_annotation(
+                    expression=member,
+                    class_info=class_info,
+                ),
+                resolver=resolver,
+            )
+        case _:
+            return None
+
+
+def _expression_length(
+    *,
+    expression: Expression,
+    fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
+) -> int | None:
+    """Return the length an expression produces, if it is known."""
+    resolved = _resolved_expression_length(
+        expression=expression,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+        resolver=resolver,
+        class_info=class_info,
+    )
+    if resolved is not None:
+        return resolved
+    return _known_sequence_length(
+        expression=expression,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+    )
+
+
+def _spread_positional_counts(
+    *,
+    call: CallExpr,
+    fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
+) -> dict[int, int]:
+    """Return the positions each ``*`` argument is known to fill.
+
+    These are worked out while the syntax tree is still available, and
+    are used later wherever the call is checked.
+    """
+    counts: dict[int, int] = {}
+    arguments = zip(call.args, call.arg_kinds, strict=True)
+    for index, (argument, kind) in enumerate(iterable=arguments):
+        if kind == ArgKind.ARG_STAR:
+            counts[index] = _spread_positional_count(
+                expression=argument,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+                resolver=resolver,
+                class_info=class_info,
+            )
+    return counts
+
+
 def _spread_positional_count(
     *,
     expression: Expression,
     fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
 ) -> int:
     """Return positions known to be filled by a ``*`` argument."""
+    resolved_length = _resolved_expression_length(
+        expression=expression,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+        resolver=resolver,
+        class_info=class_info,
+    )
+    if resolved_length is not None:
+        return resolved_length
     match expression:
         case TupleExpr(items=items) | ListExpr(items=items):
             return _leading_positional_count(
@@ -1040,7 +1246,7 @@ def _call_disallows_positional_argument(
     fullname: str,
     ignore_names: list[str],
     skip_bound_argument: bool,
-    fixed_tuple_lengths: dict[str, int],
+    spread_lengths: dict[int, int],
 ) -> bool:
     """Return whether a call passes a transformed argument by position."""
     transformed = _transform_callable_type(
@@ -1052,20 +1258,11 @@ def _call_disallows_positional_argument(
     )
 
     positional_argument_counts: list[int] = []
-    for actual_arg, actual_arg_kind in zip(
-        call.args,
-        call.arg_kinds,
-        strict=True,
-    ):
+    for index, actual_arg_kind in enumerate(iterable=call.arg_kinds):
         if actual_arg_kind == ArgKind.ARG_POS:
             positional_argument_counts.append(1)
         elif actual_arg_kind == ArgKind.ARG_STAR:
-            positional_argument_counts.append(
-                _spread_positional_count(
-                    expression=actual_arg,
-                    fixed_tuple_lengths=fixed_tuple_lengths,
-                )
-            )
+            positional_argument_counts.append(spread_lengths.get(index, 0))
 
     return _formals_disallow_positional(
         transformed=transformed,
@@ -1081,7 +1278,7 @@ def _super_call_disallows_positional_argument(
     fullname: str,
     ignore_names: list[str],
     skip_bound_argument: bool,
-    fixed_tuple_lengths: dict[str, int],
+    spread_lengths: dict[int, int],
 ) -> bool:
     """Return whether every overload rejects positional super
     arguments.
@@ -1096,7 +1293,7 @@ def _super_call_disallows_positional_argument(
             fullname=fullname,
             ignore_names=ignore_names,
             skip_bound_argument=skip_bound_argument,
-            fixed_tuple_lengths=fixed_tuple_lengths,
+            spread_lengths=spread_lengths,
         )
         for callable_item in callable_items
     )
@@ -1232,6 +1429,78 @@ def _bind_pattern_capture(
             calls.bind(_pattern_bound_names(pattern))
 
 
+_CONTEXT_MANAGER_FULLNAMES = frozenset(
+    {"contextlib.asynccontextmanager", "contextlib.contextmanager"}
+)
+
+
+def _is_context_manager_factory(
+    *,
+    node: SymbolNode | None,
+    resolver: "_AnnotationResolver",
+) -> bool:
+    """Return whether a definition is decorated as a context manager."""
+    if not isinstance(node, Decorator):
+        return False
+    for decorator in node.decorators:
+        name = _dotted_name(expression=decorator)
+        if (
+            name is not None
+            and resolver.fullname(name) in _CONTEXT_MANAGER_FULLNAMES
+        ):
+            return True
+    return False
+
+
+def _context_manager_element_length(
+    *,
+    expression: Expression,
+    calls: _CollectedCalls,
+) -> int | None:
+    """Return the fixed tuple length a context manager yields."""
+    if not isinstance(expression, CallExpr):
+        return None
+    name = _dotted_name(expression=expression.callee)
+    if name is None:
+        return None
+    node = calls.resolver.node(name)
+    if not _is_context_manager_factory(node=node, resolver=calls.resolver):
+        return None
+
+    returned = _returned_annotation(node=node)
+    if returned is None:
+        return None
+    element = _element_annotation(
+        annotation=returned,
+        resolver=calls.resolver,
+    )
+    if element is None:
+        return None
+    return _fixed_tuple_annotation_length(
+        annotation=element,
+        resolver=calls.resolver,
+    )
+
+
+def _bind_context_manager_target(
+    *,
+    target: Expression,
+    expression: Expression,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the names a ``with`` statement target binds."""
+    if not isinstance(target, NameExpr):
+        calls.bind(_binding_target_names(target))
+        return
+    calls.bind_length(
+        name=target.name,
+        length=_context_manager_element_length(
+            expression=expression,
+            calls=calls,
+        ),
+    )
+
+
 def _bind_assignment_target(
     *,
     lvalue: Expression,
@@ -1353,7 +1622,11 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             ):
                 _collect_call_exprs(expression, calls)
                 if target is not None:
-                    calls.bind(_binding_target_names(target))
+                    _bind_context_manager_target(
+                        target=target,
+                        expression=expression,
+                        calls=calls,
+                    )
                     _collect_call_exprs(target, calls)
             _collect_call_exprs(body, calls)
         case MatchStmt(
@@ -2021,7 +2294,7 @@ class _PendingSuperCall:
     call: CallExpr
     method_name: str
     class_name: str
-    fixed_tuple_lengths: dict[str, int]
+    spread_lengths: dict[int, int]
 
 
 _PendingSuperCalls = dict[tuple[str, int, int], _PendingSuperCall]
@@ -2085,7 +2358,7 @@ def _check_pending_super_call(
         fullname=fullname,
         ignore_names=ignore_names,
         skip_bound_argument=skip_bound_argument,
-        fixed_tuple_lengths=pending.fixed_tuple_lengths,
+        spread_lengths=pending.spread_lengths,
     ):
         ctx.api.fail(
             f'Too many positional arguments for "{pending.method_name}" '
@@ -2103,12 +2376,19 @@ def _check_super_method_call(
     method_name: str,
     ignore_names: list[str],
     fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
     pending_super_calls: _PendingSuperCalls,
     path: str,
     debug: bool,
 ) -> None:
     """Check one ``super()`` method call expression."""
     for info in _super_method_mro(ctx=ctx, expr=expr):
+        spread_lengths = _spread_positional_counts(
+            call=expr,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+            resolver=resolver,
+            class_info=ctx.cls.info,
+        )
         symbol = info.names.get(method_name)
         if symbol is None:
             continue
@@ -2131,7 +2411,7 @@ def _check_super_method_call(
                     call=expr,
                     method_name=method_name,
                     class_name=info.name,
-                    fixed_tuple_lengths=fixed_tuple_lengths,
+                    spread_lengths=spread_lengths,
                 )
                 return
 
@@ -2150,7 +2430,7 @@ def _check_super_method_call(
             fullname=fullname,
             ignore_names=ignore_names,
             skip_bound_argument=skip_bound_argument,
-            fixed_tuple_lengths=fixed_tuple_lengths,
+            spread_lengths=spread_lengths,
         ):
             ctx.api.fail(
                 msg=(
@@ -2219,6 +2499,7 @@ def _check_super_method_calls(
             method_name=method_name,
             ignore_names=ignore_names,
             fixed_tuple_lengths=calls.fixed_tuple_lengths.get(expr, {}),
+            resolver=resolver,
             pending_super_calls=pending_super_calls,
             path=path,
             debug=debug,
