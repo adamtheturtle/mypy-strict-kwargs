@@ -111,6 +111,99 @@ class _CollectedCalls(list[CallExpr]):
         self.bound_parameter_names: dict[CallExpr, set[str]] = {}
 
 
+# Special methods which Python and ``mypy`` invoke implicitly, mapped to
+# the number of arguments supplied by position at those implicit call
+# sites.  Those arguments are never written by the caller, so making them
+# keyword-only would make valid code impossible to express.
+#
+# Methods which are always invoked with no arguments, such as
+# ``__len__``, have nothing to preserve and so are not listed.
+_IMPLICIT_POSITIONAL_ARGUMENT_COUNTS = {
+    # Callable objects and descriptors.
+    "__call__": 1,
+    "__delete__": 1,
+    "__get__": 2,
+    "__set__": 2,
+    "__set_name__": 2,
+    # Attribute access.
+    "__delattr__": 1,
+    "__getattr__": 1,
+    "__getattribute__": 1,
+    "__setattr__": 2,
+    # Item access.
+    "__class_getitem__": 1,
+    "__contains__": 1,
+    "__delitem__": 1,
+    "__getitem__": 1,
+    "__missing__": 1,
+    "__setitem__": 2,
+    # Context managers.
+    "__aexit__": 3,
+    "__exit__": 3,
+    # Comparisons.
+    "__eq__": 1,
+    "__ge__": 1,
+    "__gt__": 1,
+    "__le__": 1,
+    "__lt__": 1,
+    "__ne__": 1,
+    # Binary, reflected and in-place operators.
+    "__add__": 1,
+    "__and__": 1,
+    "__divmod__": 1,
+    "__floordiv__": 1,
+    "__iadd__": 1,
+    "__iand__": 1,
+    "__ifloordiv__": 1,
+    "__ilshift__": 1,
+    "__imatmul__": 1,
+    "__imod__": 1,
+    "__imul__": 1,
+    "__ior__": 1,
+    "__ipow__": 2,
+    "__irshift__": 1,
+    "__isub__": 1,
+    "__itruediv__": 1,
+    "__ixor__": 1,
+    "__lshift__": 1,
+    "__matmul__": 1,
+    "__mod__": 1,
+    "__mul__": 1,
+    "__or__": 1,
+    "__pow__": 2,
+    "__radd__": 1,
+    "__rand__": 1,
+    "__rdivmod__": 1,
+    "__rfloordiv__": 1,
+    "__rlshift__": 1,
+    "__rmatmul__": 1,
+    "__rmod__": 1,
+    "__rmul__": 1,
+    "__ror__": 1,
+    "__rpow__": 1,
+    "__rrshift__": 1,
+    "__rshift__": 1,
+    "__rsub__": 1,
+    "__rtruediv__": 1,
+    "__rxor__": 1,
+    "__sub__": 1,
+    "__truediv__": 1,
+    "__xor__": 1,
+    # Other implicitly invoked special methods.
+    "__buffer__": 1,
+    "__deepcopy__": 1,
+    "__format__": 1,
+    "__instancecheck__": 1,
+    "__mro_entries__": 1,
+    "__reduce_ex__": 1,
+    "__release_buffer__": 1,
+    "__round__": 1,
+    "__setstate__": 1,
+    "__subclasscheck__": 1,
+    "__subclasshook__": 1,
+}
+
+
 def _preserved_positional_argument_count(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
@@ -121,13 +214,8 @@ def _preserved_positional_argument_count(
     if not isinstance(ctx, MethodSigContext):
         return 0
 
-    protocol_argument_counts = {
-        "__call__": 1,
-        "__get__": 2,
-        "__set__": 2,
-    }
     method_name = fullname.rsplit(sep=".", maxsplit=1)[-1]
-    preserved_count = protocol_argument_counts.get(method_name, 0)
+    preserved_count = _IMPLICIT_POSITIONAL_ARGUMENT_COUNTS.get(method_name, 0)
     if preserved_count == 0:
         return 0
 

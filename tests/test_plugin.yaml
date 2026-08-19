@@ -1139,3 +1139,100 @@
     str(1)
   out: |-
     main:5: error: Too many positional arguments for "not_ignored"  [call-arg]
+
+- case: async_context_manager
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from types import TracebackType
+
+    class Resource:
+        async def __aenter__(self) -> "Resource":
+            return self
+
+        async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc_value: BaseException | None,
+            traceback: TracebackType | None,
+        ) -> None:
+            return None
+
+    async def use(resource: Resource) -> None:
+        async with resource:
+            pass
+        await resource.__aexit__(None, None, None)
+  out: |-
+    main:18: error: Too many positional arguments for "__aexit__" of "Resource"  [call-arg]
+
+- case: reflected_divmod
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Number:
+        def __divmod__(self, other: int) -> tuple[int, int]:
+            return (0, 0)
+
+        def __rdivmod__(self, other: int) -> tuple[int, int]:
+            return (0, 0)
+
+    def use(number: Number) -> None:
+        divmod(number, 1)
+        divmod(1, number)
+        number.__rdivmod__(1)
+  out: |-
+    main:11: error: Too many positional arguments for "__rdivmod__" of "Number"  [call-arg]
+
+- case: implicit_operator_methods
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Number:
+        def __add__(self, other: int) -> "Number":
+            return self
+
+        def __radd__(self, other: int) -> "Number":
+            return self
+
+        def __getitem__(self, key: int) -> int:
+            return key
+
+        def __setitem__(self, key: int, value: int) -> None:
+            return None
+
+        def __format__(self, format_spec: str) -> str:
+            return format_spec
+
+    def use(number: Number) -> None:
+        number + 1
+        1 + number
+        number[1]
+        number[1] = 2
+        format(number, "x")
+
+- case: descriptor_delete_and_set_name
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Descriptor:
+        def __get__(self, instance: object, owner: type | None = None) -> int:
+            return 1
+
+        def __delete__(self, instance: object) -> None:
+            return None
+
+        def __set_name__(self, owner: type, name: str) -> None:
+            return None
+
+    class Holder:
+        attribute = Descriptor()
+
+    def use(holder: Holder) -> None:
+        del holder.attribute
+        Descriptor().__delete__(holder)
+  out: |-
+    main:16: error: Too many positional arguments for "__delete__" of "Descriptor"  [call-arg]
