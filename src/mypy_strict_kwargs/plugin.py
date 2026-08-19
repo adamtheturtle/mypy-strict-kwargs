@@ -125,6 +125,8 @@ class _Scope:
     # Names assigned a sequence of known length, mapped to that length.
     # ``None`` marks a name whose length is not known everywhere.
     assigned_lengths: dict[str, int | None]
+    # Annotations of the parameters this scope introduces.
+    annotations: dict[str, Type]
 
 
 class _CollectedCalls(list[CallExpr]):
@@ -144,18 +146,58 @@ class _CollectedCalls(list[CallExpr]):
                 names=set(),
                 is_comprehension=False,
                 assigned_lengths={},
+                annotations={},
             )
         ]
 
-    def push_scope(self, *, is_comprehension: bool) -> None:
+    def push_scope(
+        self,
+        *,
+        is_comprehension: bool,
+        annotations: dict[str, Type],
+    ) -> None:
         """Start collecting the names bound by a new scope."""
         self._scopes.append(
             _Scope(
                 names=set(),
                 is_comprehension=is_comprehension,
                 assigned_lengths={},
+                annotations=annotations,
             )
         )
+
+    def visible_lengths(self) -> dict[str, int]:
+        """Return the known sequence lengths of visible names."""
+        lengths: dict[str, int] = {}
+        for scope in self._scopes:
+            for name, length in scope.assigned_lengths.items():
+                if length is None:
+                    lengths.pop(name, None)
+                else:
+                    lengths[name] = length
+            for name, annotation in scope.annotations.items():
+                annotation_length = _fixed_tuple_annotation_length(
+                    annotation=annotation,
+                    resolver=self.resolver,
+                )
+                if annotation_length is None:
+                    lengths.pop(name, None)
+                else:
+                    lengths[name] = annotation_length
+        return lengths
+
+    def annotation(self, name: str, /) -> Type | None:
+        """Return the annotation of a name visible where it is used.
+
+        A scope which binds the name without annotating it hides an
+        enclosing scope's annotation.
+        """
+        for scope in reversed(self._scopes):
+            if name in scope.annotations:
+                return scope.annotations[name]
+            if name in scope.names:
+                return None
+        return None
 
     def pop_scope(self) -> _Scope:
         """Finish a scope and return what it binds."""
@@ -1086,6 +1128,110 @@ def _collect_call_exprs(
             assert_never(unreachable)
 
 
+# Generic types whose single type argument is the type of the values
+# obtained by iterating over them.
+_ITERABLE_FULLNAMES = frozenset(
+    {
+        "builtins.frozenset",
+        "builtins.list",
+        "builtins.set",
+        "collections.abc.AsyncIterable",
+        "collections.abc.AsyncIterator",
+        "collections.abc.Collection",
+        "collections.abc.Iterable",
+        "collections.abc.Iterator",
+        "collections.abc.Sequence",
+        "typing.AsyncIterable",
+        "typing.AsyncIterator",
+        "typing.Collection",
+        "typing.FrozenSet",
+        "typing.Iterable",
+        "typing.Iterator",
+        "typing.List",
+        "typing.Sequence",
+        "typing.Set",
+    }
+)
+
+
+def _element_annotation(
+    *,
+    annotation: Type,
+    resolver: "_AnnotationResolver",
+) -> Type | None:
+    """Return the annotation of the values an iterable yields."""
+    if not isinstance(annotation, UnboundType):
+        return None
+    fullname = resolver.fullname(annotation.name)
+    if fullname in _ITERABLE_FULLNAMES and len(annotation.args) == 1:
+        return annotation.args[0]
+    if fullname in _TUPLE_FULLNAMES and len(annotation.args) == 2:  # noqa: PLR2004
+        # ``tuple[X, ...]`` yields values of type ``X``.
+        if isinstance(annotation.args[1], EllipsisType):
+            return annotation.args[0]
+        return None
+    return None
+
+
+def _iterated_element_length(
+    *,
+    iterable: Expression,
+    calls: _CollectedCalls,
+) -> int | None:
+    """Return the fixed tuple length of the values an iterable yields."""
+    if not isinstance(iterable, NameExpr):
+        return None
+    annotation = calls.annotation(iterable.name)
+    if annotation is None:
+        return None
+    element = _element_annotation(
+        annotation=annotation,
+        resolver=calls.resolver,
+    )
+    if element is None:
+        return None
+    return _fixed_tuple_annotation_length(
+        annotation=element,
+        resolver=calls.resolver,
+    )
+
+
+def _bind_iteration_target(
+    *,
+    index: Expression,
+    iterable: Expression,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the names a loop or comprehension target binds."""
+    if not isinstance(index, NameExpr):
+        calls.bind(_binding_target_names(index))
+        return
+    calls.bind_length(
+        name=index.name,
+        length=_iterated_element_length(iterable=iterable, calls=calls),
+    )
+
+
+def _bind_pattern_capture(
+    *,
+    pattern: Pattern,
+    subject: Expression,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the names a match pattern captures."""
+    match pattern:
+        case AsPattern(pattern=None, name=NameExpr(name=name)):
+            calls.bind_length(
+                name=name,
+                length=_known_sequence_length(
+                    expression=subject,
+                    fixed_tuple_lengths=calls.visible_lengths(),
+                ),
+            )
+        case _:
+            calls.bind(_pattern_bound_names(pattern))
+
+
 def _bind_assignment_target(
     *,
     lvalue: Expression,
@@ -1101,7 +1247,7 @@ def _bind_assignment_target(
     if assignment.unanalyzed_type is None:
         length = _known_sequence_length(
             expression=assignment.rvalue,
-            fixed_tuple_lengths={},
+            fixed_tuple_lengths=calls.visible_lengths(),
         )
     else:
         # An explicit annotation describes the name everywhere, so a
@@ -1146,7 +1292,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             body=body,
             else_body=else_body,
         ):
-            calls.bind(_binding_target_names(index))
+            _bind_iteration_target(index=index, iterable=expr, calls=calls)
             _collect_call_exprs(index, calls)
             _collect_call_exprs(expr, calls)
             _collect_call_exprs(body, calls)
@@ -1223,7 +1369,11 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 bodies,
                 strict=True,
             ):
-                calls.bind(_pattern_bound_names(pattern))
+                _bind_pattern_capture(
+                    pattern=pattern,
+                    subject=subject,
+                    calls=calls,
+                )
                 _collect_call_exprs_from_pattern(pattern, calls)
                 if guard is not None:
                     _collect_call_exprs(guard, calls)
@@ -1289,7 +1439,15 @@ def _collect_call_exprs_from_func_item(
         if argument.initializer is not None:
             _collect_call_exprs(argument.initializer, calls)
     first_body_call_index = len(calls)
-    calls.push_scope(is_comprehension=False)
+    parameter_annotations = {
+        argument.variable.name: argument.type_annotation
+        for argument in func_item.arguments
+        if argument.type_annotation is not None
+    }
+    calls.push_scope(
+        is_comprehension=False,
+        annotations=parameter_annotations,
+    )
     _collect_call_exprs(func_item.body, calls)
     scope = calls.pop_scope()
     rebound_names = scope.names
@@ -1572,7 +1730,7 @@ def _collect_call_exprs_from_comprehension(
     the same name in enclosing scopes.
     """
     first_call_index = len(calls)
-    calls.push_scope(is_comprehension=True)
+    calls.push_scope(is_comprehension=True, annotations={})
     for index, sequence, conditions in zip(
         indices,
         sequences,
@@ -1580,17 +1738,22 @@ def _collect_call_exprs_from_comprehension(
         strict=True,
     ):
         _collect_call_exprs(sequence, calls)
-        calls.bind(_binding_target_names(index))
+        _bind_iteration_target(index=index, iterable=sequence, calls=calls)
         _collect_call_exprs(index, calls)
         for condition in conditions:
             _collect_call_exprs(condition, calls)
     for result in results:
         _collect_call_exprs(result, calls)
+    scope = calls.pop_scope()
     _apply_scope_to_calls(
         calls=calls,
         first_call_index=first_call_index,
-        names=calls.pop_scope().names,
-        fixed_tuple_lengths={},
+        names=scope.names,
+        fixed_tuple_lengths={
+            name: length
+            for name, length in scope.assigned_lengths.items()
+            if length is not None
+        },
     )
 
 

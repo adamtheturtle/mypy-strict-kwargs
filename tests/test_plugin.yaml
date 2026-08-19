@@ -2231,3 +2231,90 @@
   out: |-
     main:13: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:16: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_iterated_fixed_tuples
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from collections.abc import AsyncIterator, Iterable
+
+    GLOBAL_VALUES: tuple[tuple[int], ...] = ((1,),)
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    class Child(Base):
+        def i672(self, values: tuple[tuple[int], ...]) -> None:
+            for args in values:
+                super().method(*args)
+
+        def i673(self, values: tuple[tuple[int], ...]) -> None:
+            [super().method(*args) for args in values]
+
+        def i674(self, value: tuple[int]) -> None:
+            match value:
+                case args:
+                    super().method(*args)
+
+        async def i703(self, values: AsyncIterator[tuple[int]]) -> None:
+            async for args in values:
+                super().method(*args)
+
+        async def i704(self, values: AsyncIterator[tuple[int]]) -> None:
+            [super().method(*args) async for args in values]
+
+        def iterable(self, values: Iterable[tuple[int]]) -> None:
+            for args in values:
+                super().method(*args)
+
+        def listed(self, values: list[tuple[int]]) -> None:
+            for args in values:
+                super().method(*args)
+
+        def variable_length(self, values: list[tuple[int, ...]]) -> None:
+            for args in values:
+                super().method(*args)
+
+        def unknown_iterable(self, values: object) -> None:
+            for args in values:  # type: ignore[attr-defined]
+                super().method(*args)
+
+        def fixed_tuple_of_tuples(self, values: tuple[tuple[int], tuple[int]]) -> None:
+            for args in values:
+                super().method(*args)
+
+        def mapping(self, values: dict[str, tuple[int]]) -> None:
+            for args in values:
+                super().method(*args)  # type: ignore[misc]
+
+        def shadowed_iterable(self, values: tuple[tuple[int], ...]) -> None:
+            def inner() -> None:
+                values = [(1, 2)]
+                for args in values:
+                    super(Child, self).method(*args)
+
+        def global_iterable(self) -> None:
+            for args in GLOBAL_VALUES:
+                super().method(*args)
+
+        def union_iterable(
+            self, values: tuple[tuple[int], ...] | None
+        ) -> None:
+            assert values is not None
+            for args in values:
+                super().method(*args)
+
+        def literal_iterable(self) -> None:
+            for args in [(1,), (2,)]:
+                super().method(*args)
+  out: |-
+    main:12: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:15: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:20: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:24: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:27: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:31: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:35: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:57: error: Too many arguments for "method" of "Base"  [call-arg]
