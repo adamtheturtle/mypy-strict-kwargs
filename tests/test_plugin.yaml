@@ -2796,3 +2796,33 @@
   out: |-
     main:8: error: No binding for nonlocal "values" found  [misc]
     main:12: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_assignment_expression_outside_a_function
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    if module_args := (1,):
+        pass
+
+    [comprehension_args := (1,) for _ in [0]]
+
+    class Holder:
+        class_args = [class_walrus := (1,)]
+
+    class Child(Base):
+        def module_level(self) -> None:
+            super().method(*module_args)
+
+        def module_comprehension(self) -> None:
+            super().method(*comprehension_args)
+
+        def class_level(self) -> None:
+            super().method(*Holder.class_args[0])
+  out: |-
+    main:15: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:18: error: Too many positional arguments for "method" of "Base"  [call-arg]

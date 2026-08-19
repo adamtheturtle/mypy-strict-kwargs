@@ -288,7 +288,7 @@ class _CollectedCalls(list[CallExpr]):
         self._bind_length(
             name=name,
             length=length,
-            scope=self._enclosing_function_scopes(include_current=True)[-1],
+            scope=self._nearest_function_scope(),
         )
 
     def _bind_length(
@@ -306,27 +306,29 @@ class _CollectedCalls(list[CallExpr]):
             owner = self._nonlocal_owner(name=name) or scope
         _record_length(scope=owner, name=name, length=length)
 
-    def _enclosing_function_scopes(
-        self,
-        *,
-        include_current: bool,
-    ) -> list[_Scope]:
+    def _function_scopes(self) -> list[_Scope]:
+        """Return the scopes which are not comprehensions."""
+        return [scope for scope in self._scopes if not scope.is_comprehension]
+
+    def _nearest_function_scope(self) -> _Scope:
+        """Return the scope an assignment expression binds in.
+
+        A comprehension is the one scope which an assignment expression
+        does not bind in, and the module is a scope like any other here.
+        """
+        return self._function_scopes()[-1]
+
+    def _enclosing_function_scopes(self) -> list[_Scope]:
         """Return the function scopes a ``nonlocal`` name can belong to.
 
         The outermost scope is the module, which ``nonlocal`` never
         reaches, and the innermost is the one making the assignment.
         """
-        function_scopes = [
-            scope for scope in self._scopes if not scope.is_comprehension
-        ]
-        if include_current:
-            return function_scopes[1:]
-        return function_scopes[1:-1]
+        return self._function_scopes()[1:-1]
 
     def _nonlocal_owner(self, *, name: str) -> _Scope | None:
         """Return the scope a ``nonlocal`` name belongs to, if known."""
-        enclosing = self._enclosing_function_scopes(include_current=False)
-        for scope in reversed(enclosing):
+        for scope in reversed(self._enclosing_function_scopes()):
             if name in scope.names or name in scope.parameters:
                 return scope
         return None
