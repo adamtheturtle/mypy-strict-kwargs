@@ -1,0 +1,3 @@
+Check positional arguments supplied to ``super()`` methods from names
+bound by iterating over annotated iterables of fixed tuples, and by
+match captures.

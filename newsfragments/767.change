@@ -1,0 +1,2 @@
+Treat a ``nonlocal`` declaration as an alias of an enclosing binding
+rather than as a new binding.

@@ -1,0 +1,2 @@
+Check positional arguments which ``functools.partial`` and
+``functools.partialmethod`` bind on the callable they wrap.

@@ -11,6 +11,7 @@ from typing import Any, NoReturn, assert_never
 
 from mypy.errorcodes import CALL_ARG
 from mypy.errors import CompileError
+from mypy.exprtotype import TypeTranslationError, expr_to_unanalyzed_type
 from mypy.nodes import (
     REVEAL_TYPE,
     ArgKind,
@@ -42,11 +43,13 @@ from mypy.nodes import (
     Import,
     ImportFrom,
     IndexExpr,
+    IntExpr,
     LambdaExpr,
     ListComprehension,
     ListExpr,
     MatchStmt,
     MemberExpr,
+    MypyFile,
     NameExpr,
     NonlocalDecl,
     OperatorAssignmentStmt,
@@ -89,6 +92,7 @@ from mypy.patterns import (
     ValuePattern,
 )
 from mypy.plugin import (
+    AttributeContext,
     ClassDefContext,
     FunctionSigContext,
     MethodSigContext,
@@ -119,6 +123,14 @@ class _Scope:
 
     names: set[str]
     is_comprehension: bool
+    # Names this scope declares ``nonlocal``, which belong to an
+    # enclosing function scope rather than to this one.
+    nonlocal_names: set[str]
+    # Names assigned a sequence of known length, mapped to that length.
+    # ``None`` marks a name whose length is not known everywhere.
+    assigned_lengths: dict[str, int | None]
+    # Annotations of the parameters this scope introduces.
+    annotations: dict[str, Type]
 
 
 class _CollectedCalls(list[CallExpr]):
@@ -134,22 +146,109 @@ class _CollectedCalls(list[CallExpr]):
         # same name even when the inner binding is not a fixed tuple.
         self.bound_names: dict[CallExpr, set[str]] = {}
         self._scopes: list[_Scope] = [
-            _Scope(names=set(), is_comprehension=False)
+            _Scope(
+                names=set(),
+                is_comprehension=False,
+                nonlocal_names=set(),
+                assigned_lengths={},
+                annotations={},
+            )
         ]
 
-    def push_scope(self, *, is_comprehension: bool) -> None:
+    def push_scope(
+        self,
+        *,
+        is_comprehension: bool,
+        annotations: dict[str, Type],
+    ) -> None:
         """Start collecting the names bound by a new scope."""
         self._scopes.append(
-            _Scope(names=set(), is_comprehension=is_comprehension)
+            _Scope(
+                names=set(),
+                is_comprehension=is_comprehension,
+                nonlocal_names=set(),
+                assigned_lengths={},
+                annotations=annotations,
+            )
         )
 
-    def pop_scope(self) -> set[str]:
-        """Finish a scope and return the names it binds."""
-        return self._scopes.pop().names
+    def visible_lengths(self) -> dict[str, int]:
+        """Return the known sequence lengths of visible names."""
+        lengths: dict[str, int] = {}
+        for scope in self._scopes:
+            for name, length in scope.assigned_lengths.items():
+                if length is None:
+                    lengths.pop(name, None)
+                else:
+                    lengths[name] = length
+            for name, annotation in scope.annotations.items():
+                annotation_length = _fixed_tuple_annotation_length(
+                    annotation=annotation,
+                    resolver=self.resolver,
+                )
+                if annotation_length is None:
+                    lengths.pop(name, None)
+                else:
+                    lengths[name] = annotation_length
+        return lengths
+
+    def annotation(self, name: str, /) -> Type | None:
+        """Return the annotation of a name visible where it is used.
+
+        A scope which binds the name without annotating it hides an
+        enclosing scope's annotation.
+        """
+        for scope in reversed(self._scopes):
+            if name in scope.annotations:
+                return scope.annotations[name]
+            if name in scope.names:
+                return None
+        return None
+
+    def pop_scope(self) -> _Scope:
+        """Finish a scope and return what it binds."""
+        return self._scopes.pop()
+
+    def declare_nonlocal(self, names: set[str], /) -> None:
+        """Record names this scope declares ``nonlocal``.
+
+        A ``nonlocal`` declaration binds nothing by itself; it says that
+        assignments belong to an enclosing function scope.
+        """
+        self._scopes[-1].nonlocal_names |= names
 
     def bind(self, names: set[str], /) -> None:
         """Record names bound by the scope being collected."""
-        self._scopes[-1].names |= names
+        for name in names:
+            self.bind_length(name=name, length=None)
+
+    def bind_length(self, *, name: str, length: int | None) -> None:
+        """Record the length a name is assigned in this scope.
+
+        A name assigned more than once keeps a length only when every
+        assignment agrees.
+        """
+        for scope in self._bound_scopes(name=name):
+            scope.names.add(name)
+            if name in scope.assigned_lengths:
+                existing = scope.assigned_lengths[name]
+                scope.assigned_lengths[name] = (
+                    length if existing == length else None
+                )
+                continue
+            scope.assigned_lengths[name] = length
+
+    def _bound_scopes(self, *, name: str) -> list[_Scope]:
+        """Return the scopes an assignment to a name binds in.
+
+        An assignment to a ``nonlocal`` name belongs to an enclosing
+        function scope, so every enclosing scope loses what it knew.
+        """
+        if name not in self._scopes[-1].nonlocal_names:
+            return [self._scopes[-1]]
+        return [scope for scope in self._scopes if not scope.is_comprehension][
+            :-1
+        ]
 
     def bind_in_function_scope(self, names: set[str], /) -> None:
         """Record names bound in the nearest enclosing function scope.
@@ -323,7 +422,7 @@ _IMPLICIT_POSITIONAL_ARGUMENT_COUNTS = {
     "__rmod__": 1,
     "__rmul__": 1,
     "__ror__": 1,
-    "__rpow__": 1,
+    "__rpow__": 2,
     "__rrshift__": 1,
     "__rshift__": 1,
     "__rsub__": 1,
@@ -371,6 +470,80 @@ def _preserved_positional_argument_count(
     return preserved_count
 
 
+def _write_debug_fullname(*, fullname: str, path: str) -> None:
+    """Write a full name which ``ignore_names`` accepts.
+
+    Names found while checking a stub are not written: they are
+    internal to the type stubs rather than names from the checked
+    project, and they drown out the names a user is looking for.
+    """
+    if path.endswith(".pyi"):
+        return
+    sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
+
+
+# ``functools.partial`` and ``functools.partialmethod`` forward their
+# extra positional arguments to the callable they wrap, so those
+# arguments are checked against that callable rather than against the
+# signature of ``partial`` itself.
+_PARTIAL_FULLNAMES = frozenset(
+    {"functools.partial", "functools.partialmethod"}
+)
+
+
+def _callable_description(*, name: str) -> str:
+    """Return the way ``mypy`` names a callable in an error message."""
+    parts = name.split(sep=" of ", maxsplit=1)
+    if len(parts) == 1:
+        return f'"{parts[0]}"'
+    return f'"{parts[0]}" of "{parts[1]}"'
+
+
+def _check_partial_arguments(
+    *,
+    ctx: FunctionSigContext | MethodSigContext,
+    fullname: str,
+    ignore_names: list[str],
+) -> None:
+    """Report parameters which ``partial`` binds by position."""
+    # Pad so that a signature with fewer formal arguments than expected
+    # cannot raise.
+    argument_groups = [*ctx.args, [], []]
+    wrapped_arguments, bound_arguments = argument_groups[0], argument_groups[1]
+    if not wrapped_arguments or not bound_arguments:
+        return
+
+    wrapped = get_proper_type(
+        typ=ctx.api.get_expression_type(node=wrapped_arguments[0])
+    )
+    if not isinstance(wrapped, CallableType):
+        return
+    if wrapped.name is None or wrapped.definition is None:
+        return
+
+    # ``partialmethod`` binds arguments after the ``self`` parameter,
+    # which the descriptor supplies later.
+    skip_bound_argument = fullname == "functools.partialmethod"
+    transformed = _transform_callable_type(
+        signature=wrapped,
+        fullname=wrapped.definition.fullname,
+        ignore_names=ignore_names,
+        skip_bound_argument=skip_bound_argument,
+        preserved_positional_argument_count=0,
+    )
+    if _formals_disallow_positional(
+        transformed=transformed,
+        first_formal_index=1 if skip_bound_argument else 0,
+        positional_argument_count=len(bound_arguments),
+    ):
+        description = _callable_description(name=wrapped.name)
+        ctx.api.fail(
+            f"Too many positional arguments for {description}",
+            ctx.context,
+            code=CALL_ARG,
+        )
+
+
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
@@ -380,7 +553,14 @@ def _transform_signature(
 ) -> CallableType:
     """Transform positional arguments to keyword-only arguments."""
     if debug:
-        sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
+        _write_debug_fullname(fullname=fullname, path=ctx.api.path)
+
+    if fullname in _PARTIAL_FULLNAMES:
+        _check_partial_arguments(
+            ctx=ctx,
+            fullname=fullname,
+            ignore_names=ignore_names,
+        )
 
     return _transform_callable_type(
         signature=ctx.default_signature,
@@ -617,15 +797,137 @@ def _known_dict_length(
     return len(keys)
 
 
-def _known_sequence_length(
+def _selected_item(
+    *,
+    base: Expression,
+    index: Expression,
+) -> Expression | None:
+    """Return the item a constant subscript selects from a literal."""
+    match (base, index):
+        case (
+            (TupleExpr(items=items) | ListExpr(items=items)),
+            IntExpr(value=position),
+        ) if -len(items) <= position < len(items):
+            return items[position]
+        case (DictExpr(items=entries), IntExpr(value=key_value)):
+            for key, value in entries:
+                if isinstance(key, IntExpr) and key.value == key_value:
+                    return value
+        case (DictExpr(items=entries), StrExpr(value=key_text)):
+            for key, value in entries:
+                if isinstance(key, StrExpr) and key.value == key_text:
+                    return value
+        case _:
+            return None
+    return None
+
+
+def _known_slice_length(
+    *,
+    base: Expression,
+    index: SliceExpr,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length of a constant slice of a sequence literal."""
+    del fixed_tuple_lengths
+    if not isinstance(base, TupleExpr | ListExpr):
+        return None
+    if any(isinstance(item, StarExpr) for item in base.items):
+        # A spread makes the positions of the items unknown.
+        return None
+
+    bounds: list[int | None] = []
+    for bound in (index.begin_index, index.end_index):
+        if bound is None:
+            bounds.append(None)
+        elif isinstance(bound, IntExpr):
+            bounds.append(bound.value)
+        else:
+            return None
+    if index.stride is not None:
+        return None
+    return len(base.items[bounds[0] : bounds[1]])
+
+
+def _known_subscript_length(
+    *,
+    expression: IndexExpr,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length of a constant subscript, if it is known."""
+    if isinstance(expression.index, SliceExpr):
+        return _known_slice_length(
+            base=expression.base,
+            index=expression.index,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+    item = _selected_item(base=expression.base, index=expression.index)
+    if item is None:
+        return None
+    return _known_sequence_length(
+        expression=item,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+    )
+
+
+def _known_operator_length(
+    *,
+    expression: OpExpr,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length an operator expression produces, if known."""
+    left = _known_sequence_length(
+        expression=expression.left,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+    )
+    if left is None:
+        return None
+
+    if expression.op in {"and", "or"}:
+        # An empty sequence is the only sequence of known length which
+        # is false in a boolean context.
+        takes_left = (left == 0) if expression.op == "and" else (left != 0)
+        if takes_left:
+            return left
+        return _known_sequence_length(
+            expression=expression.right,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+
+    if expression.op == "+":
+        right = _known_sequence_length(
+            expression=expression.right,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+        return None if right is None else left + right
+
+    if expression.op == "*" and isinstance(expression.right, IntExpr):
+        return left * max(expression.right.value, 0)
+    return None
+
+
+def _known_branch_length(
+    *,
+    branches: tuple[Expression, Expression],
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length both branches produce, if they agree."""
+    lengths = {
+        _known_sequence_length(
+            expression=branch,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+        for branch in branches
+    }
+    return lengths.pop() if len(lengths) == 1 else None
+
+
+def _known_literal_length(
     *,
     expression: Expression,
     fixed_tuple_lengths: dict[str, int],
 ) -> int | None:
-    """Return the length of a sequence expression, if it is known.
-
-    ``None`` means that the length is not statically known.
-    """
+    """Return the length of a literal or a name, if it is known."""
     match expression:
         case (
             TupleExpr(items=items)
@@ -646,6 +948,43 @@ def _known_sequence_length(
             return fixed_tuple_lengths.get(name)
         case _:
             return None
+
+
+def _known_sequence_length(
+    *,
+    expression: Expression,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length of a sequence expression, if it is known.
+
+    ``None`` means that the length is not statically known.
+    """
+    match expression:
+        case AssignmentExpr(value=assigned_value):
+            return _known_sequence_length(
+                expression=assigned_value,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case ConditionalExpr(if_expr=if_expr, else_expr=else_expr):
+            return _known_branch_length(
+                branches=(if_expr, else_expr),
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case IndexExpr() as index_expression:
+            return _known_subscript_length(
+                expression=index_expression,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case OpExpr() as operator_expression:
+            return _known_operator_length(
+                expression=operator_expression,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case _:
+            return _known_literal_length(
+                expression=expression,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
 
 
 def _leading_positional_count(
@@ -674,12 +1013,224 @@ def _leading_positional_count(
     return leading_count
 
 
+_ASSERT_TYPE_FULLNAMES = frozenset(
+    {"typing.assert_type", "typing_extensions.assert_type"}
+)
+_CAST_FULLNAMES = frozenset({"typing.cast", "typing_extensions.cast"})
+_GET_ITEM_FULLNAMES = frozenset(
+    {
+        "_operator.__getitem__",
+        "_operator.getitem",
+        "operator.__getitem__",
+        "operator.getitem",
+    }
+)
+
+
+def _returned_annotation(
+    *,
+    node: SymbolNode | None,
+) -> Type | None:
+    """Return the declared return type of a callable definition."""
+    match node:
+        case FuncDef() as function:
+            signature = function.type
+        case Decorator() as decorator:
+            signature = decorator.func.type
+        case _:
+            return None
+    if not isinstance(signature, CallableType):
+        return None
+    return signature.ret_type
+
+
+def _annotation_from_expression(
+    *,
+    expression: Expression,
+    resolver: "_AnnotationResolver",
+) -> Type | None:
+    """Return the annotation an expression spells, if it spells one."""
+    try:
+        return expr_to_unanalyzed_type(
+            expr=expression,
+            options=resolver.api.options,
+        )
+    except TypeTranslationError:  # pragma: no cover
+        # An invalid ``cast()`` target is reported by the type checker
+        # itself, so this only guards against a malformed syntax tree.
+        return None
+
+
+def _called_expression_length(
+    *,
+    expression: CallExpr,
+    fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
+) -> int | None:
+    """Return the length a call is known to produce."""
+    name = _dotted_name(expression=expression.callee)
+    if name is None:
+        return None
+    fullname = resolver.fullname(name)
+    arguments = expression.args
+
+    if fullname in _ASSERT_TYPE_FULLNAMES and arguments:
+        return _expression_length(
+            expression=arguments[0],
+            fixed_tuple_lengths=fixed_tuple_lengths,
+            resolver=resolver,
+            class_info=class_info,
+        )
+    if fullname in _CAST_FULLNAMES and arguments:
+        return _fixed_tuple_annotation_length(
+            annotation=_annotation_from_expression(
+                expression=arguments[0],
+                resolver=resolver,
+            ),
+            resolver=resolver,
+        )
+    if fullname in _GET_ITEM_FULLNAMES and len(arguments) == 2:  # noqa: PLR2004
+        item = _selected_item(base=arguments[0], index=arguments[1])
+        return (
+            None
+            if item is None
+            else _expression_length(
+                expression=item,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+                resolver=resolver,
+                class_info=class_info,
+            )
+        )
+    return _fixed_tuple_annotation_length(
+        annotation=_returned_annotation(node=resolver.node(name)),
+        resolver=resolver,
+    )
+
+
+# Names which conventionally refer to the object a method is called on.
+# Only an attribute of one of these is looked up on the checked class;
+# any other name could refer to anything at all.
+_SELF_NAMES = frozenset({"cls", "self"})
+
+
+def _attribute_annotation(
+    *,
+    expression: MemberExpr,
+    class_info: TypeInfo,
+) -> Type | None:
+    """Return the annotation of an attribute of the checked class."""
+    base = expression.expr
+    if not isinstance(base, NameExpr) or base.name not in _SELF_NAMES:
+        return None
+    symbol = class_info.get(name=expression.name)
+    node = None if symbol is None else symbol.node
+    return node.type if isinstance(node, Var) else None
+
+
+def _resolved_expression_length(
+    *,
+    expression: Expression,
+    fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
+) -> int | None:
+    """Return the length an expression produces, using declarations.
+
+    This resolves forms whose length comes from a declaration rather
+    than from the expression itself, such as a call to an annotated
+    function or an annotated attribute.
+    """
+    match expression:
+        case AwaitExpr(expr=awaited):
+            return _expression_length(
+                expression=awaited,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+                resolver=resolver,
+                class_info=class_info,
+            )
+        case CallExpr() as call:
+            return _called_expression_length(
+                expression=call,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+                resolver=resolver,
+                class_info=class_info,
+            )
+        case MemberExpr() as member:
+            return _fixed_tuple_annotation_length(
+                annotation=_attribute_annotation(
+                    expression=member,
+                    class_info=class_info,
+                ),
+                resolver=resolver,
+            )
+        case _:
+            return None
+
+
+def _expression_length(
+    *,
+    expression: Expression,
+    fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
+) -> int | None:
+    """Return the length an expression produces, if it is known."""
+    resolved = _resolved_expression_length(
+        expression=expression,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+        resolver=resolver,
+        class_info=class_info,
+    )
+    if resolved is not None:
+        return resolved
+    return _known_sequence_length(
+        expression=expression,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+    )
+
+
+def _spread_positional_counts(
+    *,
+    call: CallExpr,
+    fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
+) -> dict[int, int]:
+    """Return the positions each ``*`` argument is known to fill.
+
+    These are worked out while the syntax tree is still available, and
+    are used later wherever the call is checked.
+    """
+    counts: dict[int, int] = {}
+    arguments = zip(call.args, call.arg_kinds, strict=True)
+    for index, (argument, kind) in enumerate(iterable=arguments):
+        if kind == ArgKind.ARG_STAR:
+            counts[index] = _spread_positional_count(
+                expression=argument,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+                resolver=resolver,
+                class_info=class_info,
+            )
+    return counts
+
+
 def _spread_positional_count(
     *,
     expression: Expression,
     fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    class_info: TypeInfo,
 ) -> int:
     """Return positions known to be filled by a ``*`` argument."""
+    resolved_length = _resolved_expression_length(
+        expression=expression,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+        resolver=resolver,
+        class_info=class_info,
+    )
+    if resolved_length is not None:
+        return resolved_length
     match expression:
         case TupleExpr(items=items) | ListExpr(items=items):
             return _leading_positional_count(
@@ -696,6 +1247,28 @@ def _spread_positional_count(
             )
 
 
+def _formals_disallow_positional(
+    *,
+    transformed: CallableType,
+    first_formal_index: int,
+    positional_argument_count: int,
+) -> bool:
+    """Return whether positions reach a keyword-only parameter."""
+    formal_arg_index = first_formal_index
+    for _ in range(positional_argument_count):
+        if formal_arg_index >= len(transformed.arg_kinds):
+            return False
+
+        formal_arg_kind = transformed.arg_kinds[formal_arg_index]
+        if formal_arg_kind == ArgKind.ARG_STAR:
+            return False
+        formal_arg_index += 1
+
+        if formal_arg_kind in {ArgKind.ARG_NAMED, ArgKind.ARG_NAMED_OPT}:
+            return True
+    return False
+
+
 def _call_disallows_positional_argument(
     *,
     call: CallExpr,
@@ -703,7 +1276,7 @@ def _call_disallows_positional_argument(
     fullname: str,
     ignore_names: list[str],
     skip_bound_argument: bool,
-    fixed_tuple_lengths: dict[str, int],
+    spread_lengths: dict[int, int],
 ) -> bool:
     """Return whether a call passes a transformed argument by position."""
     transformed = _transform_callable_type(
@@ -714,38 +1287,18 @@ def _call_disallows_positional_argument(
         preserved_positional_argument_count=0,
     )
 
-    formal_arg_index = 1 if skip_bound_argument else 0
-    for actual_arg, actual_arg_kind in zip(
-        call.args,
-        call.arg_kinds,
-        strict=True,
-    ):
+    positional_argument_counts: list[int] = []
+    for index, actual_arg_kind in enumerate(iterable=call.arg_kinds):
         if actual_arg_kind == ArgKind.ARG_POS:
-            positional_argument_count = 1
+            positional_argument_counts.append(1)
         elif actual_arg_kind == ArgKind.ARG_STAR:
-            positional_argument_count = _spread_positional_count(
-                expression=actual_arg,
-                fixed_tuple_lengths=fixed_tuple_lengths,
-            )
-        else:
-            continue
+            positional_argument_counts.append(spread_lengths.get(index, 0))
 
-        for _ in range(positional_argument_count):
-            if formal_arg_index >= len(transformed.arg_kinds):
-                return False
-
-            formal_arg_kind = transformed.arg_kinds[formal_arg_index]
-            if formal_arg_kind == ArgKind.ARG_STAR:
-                return False
-            formal_arg_index += 1
-
-            if formal_arg_kind in {
-                ArgKind.ARG_NAMED,
-                ArgKind.ARG_NAMED_OPT,
-            }:
-                return True
-
-    return False
+    return _formals_disallow_positional(
+        transformed=transformed,
+        first_formal_index=1 if skip_bound_argument else 0,
+        positional_argument_count=sum(positional_argument_counts),
+    )
 
 
 def _super_call_disallows_positional_argument(
@@ -755,7 +1308,7 @@ def _super_call_disallows_positional_argument(
     fullname: str,
     ignore_names: list[str],
     skip_bound_argument: bool,
-    fixed_tuple_lengths: dict[str, int],
+    spread_lengths: dict[int, int],
 ) -> bool:
     """Return whether every overload rejects positional super
     arguments.
@@ -770,7 +1323,7 @@ def _super_call_disallows_positional_argument(
             fullname=fullname,
             ignore_names=ignore_names,
             skip_bound_argument=skip_bound_argument,
-            fixed_tuple_lengths=fixed_tuple_lengths,
+            spread_lengths=spread_lengths,
         )
         for callable_item in callable_items
     )
@@ -802,6 +1355,209 @@ def _collect_call_exprs(
             assert_never(unreachable)
 
 
+# Generic types whose single type argument is the type of the values
+# obtained by iterating over them.
+_ITERABLE_FULLNAMES = frozenset(
+    {
+        "builtins.frozenset",
+        "builtins.list",
+        "builtins.set",
+        "collections.abc.AsyncIterable",
+        "collections.abc.AsyncIterator",
+        "collections.abc.Collection",
+        "collections.abc.Iterable",
+        "collections.abc.Iterator",
+        "collections.abc.Sequence",
+        "typing.AsyncIterable",
+        "typing.AsyncIterator",
+        "typing.Collection",
+        "typing.FrozenSet",
+        "typing.Iterable",
+        "typing.Iterator",
+        "typing.List",
+        "typing.Sequence",
+        "typing.Set",
+    }
+)
+
+
+def _element_annotation(
+    *,
+    annotation: Type,
+    resolver: "_AnnotationResolver",
+) -> Type | None:
+    """Return the annotation of the values an iterable yields."""
+    if not isinstance(annotation, UnboundType):
+        return None
+    fullname = resolver.fullname(annotation.name)
+    if fullname in _ITERABLE_FULLNAMES and len(annotation.args) == 1:
+        return annotation.args[0]
+    if fullname in _TUPLE_FULLNAMES and len(annotation.args) == 2:  # noqa: PLR2004
+        # ``tuple[X, ...]`` yields values of type ``X``.
+        if isinstance(annotation.args[1], EllipsisType):
+            return annotation.args[0]
+        return None
+    return None
+
+
+def _iterated_element_length(
+    *,
+    iterable: Expression,
+    calls: _CollectedCalls,
+) -> int | None:
+    """Return the fixed tuple length of the values an iterable yields."""
+    if not isinstance(iterable, NameExpr):
+        return None
+    annotation = calls.annotation(iterable.name)
+    if annotation is None:
+        return None
+    element = _element_annotation(
+        annotation=annotation,
+        resolver=calls.resolver,
+    )
+    if element is None:
+        return None
+    return _fixed_tuple_annotation_length(
+        annotation=element,
+        resolver=calls.resolver,
+    )
+
+
+def _bind_iteration_target(
+    *,
+    index: Expression,
+    iterable: Expression,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the names a loop or comprehension target binds."""
+    if not isinstance(index, NameExpr):
+        calls.bind(_binding_target_names(index))
+        return
+    calls.bind_length(
+        name=index.name,
+        length=_iterated_element_length(iterable=iterable, calls=calls),
+    )
+
+
+def _bind_pattern_capture(
+    *,
+    pattern: Pattern,
+    subject: Expression,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the names a match pattern captures."""
+    match pattern:
+        case AsPattern(pattern=None, name=NameExpr(name=name)):
+            calls.bind_length(
+                name=name,
+                length=_known_sequence_length(
+                    expression=subject,
+                    fixed_tuple_lengths=calls.visible_lengths(),
+                ),
+            )
+        case _:
+            calls.bind(_pattern_bound_names(pattern))
+
+
+_CONTEXT_MANAGER_FULLNAMES = frozenset(
+    {"contextlib.asynccontextmanager", "contextlib.contextmanager"}
+)
+
+
+def _is_context_manager_factory(
+    *,
+    node: SymbolNode | None,
+    resolver: "_AnnotationResolver",
+) -> bool:
+    """Return whether a definition is decorated as a context manager."""
+    if not isinstance(node, Decorator):
+        return False
+    for decorator in node.decorators:
+        name = _dotted_name(expression=decorator)
+        if (
+            name is not None
+            and resolver.fullname(name) in _CONTEXT_MANAGER_FULLNAMES
+        ):
+            return True
+    return False
+
+
+def _context_manager_element_length(
+    *,
+    expression: Expression,
+    calls: _CollectedCalls,
+) -> int | None:
+    """Return the fixed tuple length a context manager yields."""
+    if not isinstance(expression, CallExpr):
+        return None
+    name = _dotted_name(expression=expression.callee)
+    if name is None:
+        return None
+    node = calls.resolver.node(name)
+    if not _is_context_manager_factory(node=node, resolver=calls.resolver):
+        return None
+
+    returned = _returned_annotation(node=node)
+    if returned is None:
+        return None
+    element = _element_annotation(
+        annotation=returned,
+        resolver=calls.resolver,
+    )
+    if element is None:
+        return None
+    return _fixed_tuple_annotation_length(
+        annotation=element,
+        resolver=calls.resolver,
+    )
+
+
+def _bind_context_manager_target(
+    *,
+    target: Expression,
+    expression: Expression,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the names a ``with`` statement target binds."""
+    if not isinstance(target, NameExpr):
+        calls.bind(_binding_target_names(target))
+        return
+    calls.bind_length(
+        name=target.name,
+        length=_context_manager_element_length(
+            expression=expression,
+            calls=calls,
+        ),
+    )
+
+
+def _bind_assignment_target(
+    *,
+    lvalue: Expression,
+    assignment: AssignmentStmt,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the names an assignment binds, and their lengths."""
+    names = _binding_target_names(lvalue)
+    if not isinstance(lvalue, NameExpr):
+        calls.bind(names)
+        return
+
+    if assignment.unanalyzed_type is None:
+        length = _known_sequence_length(
+            expression=assignment.rvalue,
+            fixed_tuple_lengths=calls.visible_lengths(),
+        )
+    else:
+        # An explicit annotation describes the name everywhere, so a
+        # variable-length annotation wins over the assigned value.
+        length = _fixed_tuple_annotation_length(
+            annotation=assignment.unanalyzed_type,
+            resolver=calls.resolver,
+        )
+    calls.bind_length(name=lvalue.name, length=length)
+
+
 def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
     statement: Statement,
     calls: _CollectedCalls,
@@ -811,10 +1567,14 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
     match statement:
         case ExpressionStmt(expr=expr):
             _collect_call_exprs(expr, calls)
-        case AssignmentStmt(rvalue=rvalue, lvalues=lvalues):
+        case AssignmentStmt(rvalue=rvalue, lvalues=lvalues) as assignment:
             _collect_call_exprs(rvalue, calls)
             for lvalue in lvalues:
-                calls.bind(_binding_target_names(lvalue))
+                _bind_assignment_target(
+                    lvalue=lvalue,
+                    assignment=assignment,
+                    calls=calls,
+                )
                 _collect_call_exprs(lvalue, calls)
         case OperatorAssignmentStmt(rvalue=rvalue, lvalue=lvalue):
             _collect_call_exprs(rvalue, calls)
@@ -831,7 +1591,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             body=body,
             else_body=else_body,
         ):
-            calls.bind(_binding_target_names(index))
+            _bind_iteration_target(index=index, iterable=expr, calls=calls)
             _collect_call_exprs(index, calls)
             _collect_call_exprs(expr, calls)
             _collect_call_exprs(body, calls)
@@ -892,7 +1652,11 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             ):
                 _collect_call_exprs(expression, calls)
                 if target is not None:
-                    calls.bind(_binding_target_names(target))
+                    _bind_context_manager_target(
+                        target=target,
+                        expression=expression,
+                        calls=calls,
+                    )
                     _collect_call_exprs(target, calls)
             _collect_call_exprs(body, calls)
         case MatchStmt(
@@ -908,7 +1672,11 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 bodies,
                 strict=True,
             ):
-                calls.bind(_pattern_bound_names(pattern))
+                _bind_pattern_capture(
+                    pattern=pattern,
+                    subject=subject,
+                    calls=calls,
+                )
                 _collect_call_exprs_from_pattern(pattern, calls)
                 if guard is not None:
                     _collect_call_exprs(guard, calls)
@@ -944,8 +1712,10 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 _collect_call_exprs(metaclass, calls)
             for keyword_expression in keywords.values():
                 _collect_call_exprs(keyword_expression, calls)
-        case GlobalDecl(names=names) | NonlocalDecl(names=names):
+        case GlobalDecl(names=names):
             calls.bind(set(names))
+        case NonlocalDecl(names=names):
+            calls.declare_nonlocal(set(names))
         case Import(ids=ids):
             calls.bind(
                 {
@@ -974,9 +1744,18 @@ def _collect_call_exprs_from_func_item(
         if argument.initializer is not None:
             _collect_call_exprs(argument.initializer, calls)
     first_body_call_index = len(calls)
-    calls.push_scope(is_comprehension=False)
+    parameter_annotations = {
+        argument.variable.name: argument.type_annotation
+        for argument in func_item.arguments
+        if argument.type_annotation is not None
+    }
+    calls.push_scope(
+        is_comprehension=False,
+        annotations=parameter_annotations,
+    )
     _collect_call_exprs(func_item.body, calls)
-    rebound_names = calls.pop_scope()
+    scope = calls.pop_scope()
+    rebound_names = scope.names
 
     parameter_names = {
         argument.variable.name for argument in func_item.arguments
@@ -995,6 +1774,13 @@ def _collect_call_exprs_from_func_item(
         )
         is not None
     }
+    fixed_tuple_lengths.update(
+        {
+            name: length
+            for name, length in scope.assigned_lengths.items()
+            if length is not None
+        }
+    )
     _apply_scope_to_calls(
         calls=calls,
         first_call_index=first_body_call_index,
@@ -1248,26 +2034,32 @@ def _collect_call_exprs_from_comprehension(
     A comprehension is its own scope, so its targets shadow bindings of
     the same name in enclosing scopes.
     """
+    # The leftmost iterable is evaluated in the enclosing scope, so the
+    # comprehension's targets do not shadow anything within it.
+    _collect_call_exprs(sequences[0], calls)
     first_call_index = len(calls)
-    calls.push_scope(is_comprehension=True)
-    for index, sequence, conditions in zip(
-        indices,
-        sequences,
-        condlists,
-        strict=True,
+    calls.push_scope(is_comprehension=True, annotations={})
+    for position, (index, sequence, conditions) in enumerate(
+        iterable=zip(indices, sequences, condlists, strict=True)
     ):
-        _collect_call_exprs(sequence, calls)
-        calls.bind(_binding_target_names(index))
+        if position:
+            _collect_call_exprs(sequence, calls)
+        _bind_iteration_target(index=index, iterable=sequence, calls=calls)
         _collect_call_exprs(index, calls)
         for condition in conditions:
             _collect_call_exprs(condition, calls)
     for result in results:
         _collect_call_exprs(result, calls)
+    scope = calls.pop_scope()
     _apply_scope_to_calls(
         calls=calls,
         first_call_index=first_call_index,
-        names=calls.pop_scope(),
-        fixed_tuple_lengths={},
+        names=scope.names,
+        fixed_tuple_lengths={
+            name: length
+            for name, length in scope.assigned_lengths.items()
+            if length is not None
+        },
     )
 
 
@@ -1523,59 +2315,91 @@ def _iter_call_exprs(
     return calls
 
 
-def _assigned_staticmethod_target(
-    *,
-    class_def: ClassDef,
-    method_name: str,
-) -> FuncDef | OverloadedFuncDef | Decorator | None:
-    """Return the callable wrapped by an assigned ``staticmethod``."""
-    for statement in class_def.defs.body:
-        match statement:
-            case AssignmentStmt(
-                lvalues=[NameExpr(name=name)],
-                rvalue=CallExpr(
-                    callee=NameExpr(fullname="builtins.staticmethod"),
-                    args=[
-                        NameExpr(
-                            node=(
-                                FuncDef() | OverloadedFuncDef() | Decorator()
-                            ) as target
-                        )
-                    ],
-                ),
-            ) if name == method_name:
-                return target
-            case _:
-                continue
-    return None
-
-
 @dataclass(frozen=True, kw_only=True)
-class _ResolvedSuperMember:
-    """A resolved ``super()`` member node and its assigned full name."""
+class _PendingSuperCall:
+    """A ``super()`` call whose member type is not known yet.
 
-    node: FuncDef | OverloadedFuncDef | Decorator | None
-    assigned_fullname: str | None
+    A member which is not a method -- an assigned function, a callable
+    object, a descriptor -- has no type during semantic analysis, so the
+    call is checked later from the attribute hook.
+    """
+
+    call: CallExpr
+    method_name: str
+    class_name: str
+    spread_lengths: dict[int, int]
 
 
-def _resolved_super_member_node(
+_PendingSuperCalls = dict[tuple[str, int, int], _PendingSuperCall]
+
+
+def _pending_super_call_key(
     *,
-    node: SymbolNode | None,
-    class_def: ClassDef,
-    method_name: str,
-) -> _ResolvedSuperMember:
-    """Resolve a supported member node and its assigned full name."""
-    if isinstance(node, Var):
-        return _ResolvedSuperMember(
-            node=_assigned_staticmethod_target(
-                class_def=class_def,
-                method_name=method_name,
-            ),
-            assigned_fullname=node.fullname,
+    path: str,
+    expr: CallExpr,
+) -> tuple[str, int, int]:
+    """Return the key identifying a ``super()`` call expression."""
+    callee = expr.callee
+    return (path, callee.line, callee.column)
+
+
+def _instance_call_signature(*, instance: Instance) -> FunctionLike | None:
+    """Return the signature of a callable object's ``__call__``."""
+    symbol = instance.type.get(name="__call__")
+    signature = None if symbol is None else get_proper_type(typ=symbol.type)
+    return signature if isinstance(signature, FunctionLike) else None
+
+
+def _check_pending_super_call(
+    ctx: AttributeContext,
+    *,
+    fullname: str,
+    ignore_names: list[str],
+    pending_super_calls: _PendingSuperCalls,
+    debug: bool,
+) -> Type:
+    """Check a ``super()`` call to a member which is not a method."""
+    context = ctx.context
+    if not isinstance(context, SuperExpr):
+        return ctx.default_attr_type
+
+    pending = pending_super_calls.get(
+        (ctx.api.path, context.line, context.column)
+    )
+    if pending is None:
+        return ctx.default_attr_type
+
+    if debug:
+        _write_debug_fullname(fullname=fullname, path=ctx.api.path)
+
+    if fullname in ignore_names:
+        return ctx.default_attr_type
+
+    attribute_type = get_proper_type(typ=ctx.default_attr_type)
+    signature: FunctionLike | None = None
+    skip_bound_argument = False
+    if isinstance(attribute_type, FunctionLike):
+        signature = attribute_type
+    elif isinstance(attribute_type, Instance):
+        # A callable object supplies its own ``self``.
+        signature = _instance_call_signature(instance=attribute_type)
+        skip_bound_argument = True
+
+    if signature is not None and _super_call_disallows_positional_argument(
+        call=pending.call,
+        signature=signature,
+        fullname=fullname,
+        ignore_names=ignore_names,
+        skip_bound_argument=skip_bound_argument,
+        spread_lengths=pending.spread_lengths,
+    ):
+        ctx.api.fail(
+            f'Too many positional arguments for "{pending.method_name}" '
+            f'of "{pending.class_name}"',
+            pending.call,
+            code=CALL_ARG,
         )
-    if isinstance(node, FuncDef | OverloadedFuncDef | Decorator):
-        return _ResolvedSuperMember(node=node, assigned_fullname=None)
-    return _ResolvedSuperMember(node=None, assigned_fullname=None)
+    return ctx.default_attr_type
 
 
 def _check_super_method_call(
@@ -1585,36 +2409,47 @@ def _check_super_method_call(
     method_name: str,
     ignore_names: list[str],
     fixed_tuple_lengths: dict[str, int],
+    resolver: "_AnnotationResolver",
+    pending_super_calls: _PendingSuperCalls,
+    path: str,
+    debug: bool,
 ) -> None:
     """Check one ``super()`` method call expression."""
     for info in _super_method_mro(ctx=ctx, expr=expr):
+        spread_lengths = _spread_positional_counts(
+            call=expr,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+            resolver=resolver,
+            class_info=ctx.cls.info,
+        )
         symbol = info.names.get(method_name)
         if symbol is None:
             continue
 
-        resolved = _resolved_super_member_node(
-            node=symbol.node,
-            class_def=info.defn,
-            method_name=method_name,
-        )
-        assigned_fullname = resolved.assigned_fullname
-
-        match resolved.node:
+        match symbol.node:
             case FuncDef() | OverloadedFuncDef() as node:
-                fullname = assigned_fullname or node.fullname
+                fullname = node.fullname
                 typ = node.type
-                skip_bound_argument = (
-                    assigned_fullname is None and node.has_self_or_cls_argument
-                )
+                skip_bound_argument = node.has_self_or_cls_argument
             case Decorator() as node:
-                fullname = assigned_fullname or node.fullname
+                fullname = node.fullname
                 typ = node.func.type
-                skip_bound_argument = (
-                    assigned_fullname is None
-                    and node.func.has_self_or_cls_argument
-                )
+                skip_bound_argument = node.func.has_self_or_cls_argument
             case _:
+                # The member is not a method, so its type is only known
+                # once type checking runs.
+                pending_super_calls[
+                    _pending_super_call_key(path=path, expr=expr)
+                ] = _PendingSuperCall(
+                    call=expr,
+                    method_name=method_name,
+                    class_name=info.name,
+                    spread_lengths=spread_lengths,
+                )
                 return
+
+        if debug:
+            _write_debug_fullname(fullname=fullname, path=path)
 
         if fullname in ignore_names:
             return
@@ -1628,7 +2463,7 @@ def _check_super_method_call(
             fullname=fullname,
             ignore_names=ignore_names,
             skip_bound_argument=skip_bound_argument,
-            fixed_tuple_lengths=fixed_tuple_lengths,
+            spread_lengths=spread_lengths,
         ):
             ctx.api.fail(
                 msg=(
@@ -1642,10 +2477,29 @@ def _check_super_method_call(
         return
 
 
+def _module_assigned_lengths(
+    *,
+    module: MypyFile,
+    resolver: _AnnotationResolver,
+) -> dict[str, int]:
+    """Return module-level names assigned a sequence of known length."""
+    scope_calls = _CollectedCalls(resolver=resolver)
+    for statement in module.defs:
+        _collect_call_exprs(statement, scope_calls)
+    return {
+        name: length
+        for name, length in scope_calls.pop_scope().assigned_lengths.items()
+        if length is not None
+    }
+
+
 def _check_super_method_calls(
     ctx: ClassDefContext,
     *,
     ignore_names: list[str],
+    module_lengths: dict[str, dict[str, int]],
+    pending_super_calls: _PendingSuperCalls,
+    debug: bool,
 ) -> None:
     """Check ``super()`` method calls in a class body.
 
@@ -1653,9 +2507,20 @@ def _check_super_method_calls(
     ``super().method(...)``
     (https://github.com/python/mypy/issues/21744).
     """
-    calls = _iter_call_exprs(
-        ctx.cls.defs,
-        resolver=_AnnotationResolver(api=ctx.api, context=ctx.cls),
+    module = ctx.api.modules[ctx.api.cur_mod_id]
+    path = module.path
+    resolver = _AnnotationResolver(api=ctx.api, context=ctx.cls)
+    calls = _iter_call_exprs(ctx.cls.defs, resolver=resolver)
+    if ctx.api.cur_mod_id not in module_lengths:
+        module_lengths[ctx.api.cur_mod_id] = _module_assigned_lengths(
+            module=module,
+            resolver=resolver,
+        )
+    _apply_scope_to_calls(
+        calls=calls,
+        first_call_index=0,
+        names=set(module_lengths[ctx.api.cur_mod_id]),
+        fixed_tuple_lengths=module_lengths[ctx.api.cur_mod_id],
     )
     for expr in calls:
         method_name = _super_method_name(expr=expr)
@@ -1667,6 +2532,10 @@ def _check_super_method_calls(
             method_name=method_name,
             ignore_names=ignore_names,
             fixed_tuple_lengths=calls.fixed_tuple_lengths.get(expr, {}),
+            resolver=resolver,
+            pending_super_calls=pending_super_calls,
+            path=path,
+            debug=debug,
         )
 
 
@@ -1849,6 +2718,8 @@ class KeywordOnlyPlugin(Plugin):
         This is not friendly to errors yet.
         """
         super().__init__(options=options)
+        self._pending_super_calls: _PendingSuperCalls = {}
+        self._module_lengths: dict[str, dict[str, int]] = {}
         configuration = _plugin_configuration(
             config_file_path=options.config_file,
         )
@@ -1903,6 +2774,26 @@ class KeywordOnlyPlugin(Plugin):
         return partial(
             _check_super_method_calls,
             ignore_names=self._ignore_names,
+            module_lengths=self._module_lengths,
+            pending_super_calls=self._pending_super_calls,
+            debug=self._debug,
+        )
+
+    def get_attribute_hook(
+        self,
+        fullname: str,
+    ) -> Callable[[AttributeContext], Type] | None:
+        """Check ``super()`` calls to members which are not methods.
+
+        The type of such a member is only known once type checking
+        runs, which is after the base class hook which finds the call.
+        """
+        return partial(
+            _check_pending_super_call,
+            fullname=fullname,
+            ignore_names=self._ignore_names,
+            pending_super_calls=self._pending_super_calls,
+            debug=self._debug,
         )
 
 
