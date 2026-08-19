@@ -193,8 +193,8 @@
         def call(self) -> None:
             super(B, self).method(1)
 
-# Fall back to zero-argument super() MRO when the first argument is not a
-# simple name or attribute (e.g. an index expression).
+# Skip the check when the first argument is not a simple name or attribute
+# (e.g. an index expression).
 - case: super_method_explicit_super_non_name
   mypy_config: |
     [mypy]
@@ -208,10 +208,9 @@
             classes = (B,)
             super(classes[0], self).method(1)
   out: |-
-    main:7: error: Too many positional arguments for "method" of "B"  [call-arg]
     main:7: error: "method" undefined in superclass  [misc]
 
-# Fall back when the first argument name does not resolve to a type.
+# Skip the check when the first argument name does not name a type.
 - case: super_method_explicit_super_non_type
   mypy_config: |
     [mypy]
@@ -226,10 +225,9 @@
         def method(self, a: int) -> None:
             super(x, self).method(1)
   out: |-
-    main:8: error: Too many positional arguments for "method" of "B"  [call-arg]
     main:8: error: Argument 1 for "super" must be a type object; got a non-type instance  [arg-type]
 
-# Fall back when the explicit type is not in the current class MRO.
+# Skip the check when the explicit type is not in the current class MRO.
 - case: super_method_explicit_super_not_in_mro
   mypy_config: |
     [mypy]
@@ -245,7 +243,6 @@
         def method(self, a: int) -> None:
             super(Unrelated, self).method(1)
   out: |-
-    main:9: error: Too many positional arguments for "method" of "B"  [call-arg]
     main:9: error: Argument 2 for "super" not an instance of argument 1  [misc]
 
 - case: super_method_keyword_argument
@@ -1906,9 +1903,6 @@
             super(D.ClassAlias, self).method(1)
   out: |-
     main:41: error: Too many positional arguments for "method" of "B2"  [call-arg]
-    main:47: error: Too many positional arguments for "method" of "B2"  [call-arg]
-    main:50: error: Too many positional arguments for "method" of "B2"  [call-arg]
-    main:53: error: Too many positional arguments for "method" of "B2"  [call-arg]
 
 - case: functools_partial_bound_arguments
   mypy_config: |
@@ -2538,6 +2532,100 @@
     main:7: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:15: error: Too many positional arguments for "method" of "Base"  [call-arg]
 
+- case: super_union_walrus_and_global_lengths
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import Never, TypeAlias, Union
+
+    UnionAlias: TypeAlias = Union[tuple[int], Never]
+    PipeAlias: TypeAlias = tuple[int] | Never
+    MixedAlias: TypeAlias = tuple[int] | tuple[int, int]
+    PartialAlias: TypeAlias = tuple[int] | list[int]
+    VALUES = (1,)
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    def nested() -> None:
+        values = [1]
+
+        def inner() -> None:
+            nonlocal values
+            values = [1, 2]
+
+    class Child(Base):
+        def union_spelling(self, args: Union[tuple[int], Never]) -> None:
+            super().method(*args)
+
+        def union_alias(self, args: UnionAlias) -> None:
+            super().method(*args)
+
+        def pipe_alias(self, args: PipeAlias) -> None:
+            super().method(*args)
+
+        def mixed_alias(self, args: MixedAlias) -> None:
+            super().method(*args)
+
+        def partial_alias(self, args: PartialAlias) -> None:
+            super().method(*args)
+
+        def walrus_reuse(self) -> None:
+            if args := (1,):
+                super().method(*args)
+
+        def global_then_assign(self) -> None:
+            global VALUES
+            VALUES = (1,)
+            super().method(*VALUES)
+
+        def global_only(self, VALUES: tuple[int, int]) -> None:
+            def inner() -> None:
+                global VALUES
+                super(Child, self).method(*VALUES)
+
+        def module_value(self) -> None:
+            super().method(*VALUES)
+  out: |-
+    main:22: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:25: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:28: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:38: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:43: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:51: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_explicit_start_type_from_another_module
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  files:
+    - path: shared.py
+      content: |
+        from typing import Final
+
+        class A:
+            def method(self, value: int, /) -> None:
+                return None
+
+        class B(A):
+            def method(self, value: int) -> None:
+                return None
+
+        Alias: Final = B
+  main: |-
+    from shared import Alias, B
+
+    class C(B):
+        def call(self) -> None:
+            super(Alias, self).method(1)
+
+        def reported(self) -> None:
+            super(C, self).method(1)
+  out: |-
+    main:8: error: Too many positional arguments for "method" of "B"  [call-arg]
+
 - case: super_fixed_tuple_nonlocal_ownership
   mypy_config: |
     [mypy]
@@ -2564,5 +2652,82 @@
                     args = [2]
 
             super(Child, self).method(*args)
+
+        def outer_owner(self, values: tuple[int, int]) -> None:
+            def middle() -> None:
+                def inner() -> None:
+                    nonlocal values
+                    values = [1]  # type: ignore[assignment]
+
+            super(Child, self).method(*values)
+
+        def unowned(self, args: tuple[int, int]) -> None:
+            def middle(values) -> None:
+                def inner() -> None:
+                    nonlocal values
+                    values = [1]
+
+            super(Child, self).method(*args)
   out: |-
     main:21: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:37: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_global_and_repeated_nonlocal_bindings
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    ARGS: tuple[int, ...] = (1,)
+
+    class Base:
+        def method(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def global_hides(self, ARGS: tuple[int, int]) -> None:
+            def inner() -> None:
+                global ARGS
+                copy = ARGS
+                super(Child, self).method(*copy)
+
+        def double_nonlocal(self, args: tuple[int, ...]) -> None:
+            def middle() -> None:
+                def first() -> None:
+                    nonlocal args
+                    args = (1, 2)
+
+                def second() -> None:
+                    nonlocal args
+                    args = (1,)
+
+            super(Child, self).method(*args)
+
+- case: super_nonlocal_without_a_known_owner
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def unannotated_owner(self, args) -> None:
+            def inner() -> None:
+                nonlocal args
+                args = (1, 2)
+
+            super(Child, self).method(*args)
+
+        def disagreeing(self, args) -> None:
+            def first() -> None:
+                nonlocal args
+                args = (1, 2)
+
+            def second() -> None:
+                nonlocal args
+                args = (1,)
+
+            super(Child, self).method(*args)
+  out: |-
+    main:11: error: Too many positional arguments for "method" of "Base"  [call-arg]
