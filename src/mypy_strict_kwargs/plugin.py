@@ -42,11 +42,13 @@ from mypy.nodes import (
     Import,
     ImportFrom,
     IndexExpr,
+    IntExpr,
     LambdaExpr,
     ListComprehension,
     ListExpr,
     MatchStmt,
     MemberExpr,
+    MypyFile,
     NameExpr,
     NonlocalDecl,
     OperatorAssignmentStmt,
@@ -120,6 +122,9 @@ class _Scope:
 
     names: set[str]
     is_comprehension: bool
+    # Names assigned a sequence of known length, mapped to that length.
+    # ``None`` marks a name whose length is not known everywhere.
+    assigned_lengths: dict[str, int | None]
 
 
 class _CollectedCalls(list[CallExpr]):
@@ -135,22 +140,49 @@ class _CollectedCalls(list[CallExpr]):
         # same name even when the inner binding is not a fixed tuple.
         self.bound_names: dict[CallExpr, set[str]] = {}
         self._scopes: list[_Scope] = [
-            _Scope(names=set(), is_comprehension=False)
+            _Scope(
+                names=set(),
+                is_comprehension=False,
+                assigned_lengths={},
+            )
         ]
 
     def push_scope(self, *, is_comprehension: bool) -> None:
         """Start collecting the names bound by a new scope."""
         self._scopes.append(
-            _Scope(names=set(), is_comprehension=is_comprehension)
+            _Scope(
+                names=set(),
+                is_comprehension=is_comprehension,
+                assigned_lengths={},
+            )
         )
 
-    def pop_scope(self) -> set[str]:
-        """Finish a scope and return the names it binds."""
-        return self._scopes.pop().names
+    def pop_scope(self) -> _Scope:
+        """Finish a scope and return what it binds."""
+        return self._scopes.pop()
 
     def bind(self, names: set[str], /) -> None:
         """Record names bound by the scope being collected."""
-        self._scopes[-1].names |= names
+        scope = self._scopes[-1]
+        scope.names |= names
+        for name in names:
+            scope.assigned_lengths[name] = None
+
+    def bind_length(self, *, name: str, length: int | None) -> None:
+        """Record the length a name is assigned in this scope.
+
+        A name assigned more than once keeps a length only when every
+        assignment agrees.
+        """
+        scope = self._scopes[-1]
+        scope.names.add(name)
+        if name in scope.assigned_lengths:
+            existing = scope.assigned_lengths[name]
+            scope.assigned_lengths[name] = (
+                length if existing == length else None
+            )
+            return
+        scope.assigned_lengths[name] = length
 
     def bind_in_function_scope(self, names: set[str], /) -> None:
         """Record names bound in the nearest enclosing function scope.
@@ -699,15 +731,137 @@ def _known_dict_length(
     return len(keys)
 
 
-def _known_sequence_length(
+def _selected_item(
+    *,
+    base: Expression,
+    index: Expression,
+) -> Expression | None:
+    """Return the item a constant subscript selects from a literal."""
+    match (base, index):
+        case (
+            (TupleExpr(items=items) | ListExpr(items=items)),
+            IntExpr(value=position),
+        ) if -len(items) <= position < len(items):
+            return items[position]
+        case (DictExpr(items=entries), IntExpr(value=key_value)):
+            for key, value in entries:
+                if isinstance(key, IntExpr) and key.value == key_value:
+                    return value
+        case (DictExpr(items=entries), StrExpr(value=key_text)):
+            for key, value in entries:
+                if isinstance(key, StrExpr) and key.value == key_text:
+                    return value
+        case _:
+            return None
+    return None
+
+
+def _known_slice_length(
+    *,
+    base: Expression,
+    index: SliceExpr,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length of a constant slice of a sequence literal."""
+    del fixed_tuple_lengths
+    if not isinstance(base, TupleExpr | ListExpr):
+        return None
+    if any(isinstance(item, StarExpr) for item in base.items):
+        # A spread makes the positions of the items unknown.
+        return None
+
+    bounds: list[int | None] = []
+    for bound in (index.begin_index, index.end_index):
+        if bound is None:
+            bounds.append(None)
+        elif isinstance(bound, IntExpr):
+            bounds.append(bound.value)
+        else:
+            return None
+    if index.stride is not None:
+        return None
+    return len(base.items[bounds[0] : bounds[1]])
+
+
+def _known_subscript_length(
+    *,
+    expression: IndexExpr,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length of a constant subscript, if it is known."""
+    if isinstance(expression.index, SliceExpr):
+        return _known_slice_length(
+            base=expression.base,
+            index=expression.index,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+    item = _selected_item(base=expression.base, index=expression.index)
+    if item is None:
+        return None
+    return _known_sequence_length(
+        expression=item,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+    )
+
+
+def _known_operator_length(
+    *,
+    expression: OpExpr,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length an operator expression produces, if known."""
+    left = _known_sequence_length(
+        expression=expression.left,
+        fixed_tuple_lengths=fixed_tuple_lengths,
+    )
+    if left is None:
+        return None
+
+    if expression.op in {"and", "or"}:
+        # An empty sequence is the only sequence of known length which
+        # is false in a boolean context.
+        takes_left = (left == 0) if expression.op == "and" else (left != 0)
+        if takes_left:
+            return left
+        return _known_sequence_length(
+            expression=expression.right,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+
+    if expression.op == "+":
+        right = _known_sequence_length(
+            expression=expression.right,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+        return None if right is None else left + right
+
+    if expression.op == "*" and isinstance(expression.right, IntExpr):
+        return left * max(expression.right.value, 0)
+    return None
+
+
+def _known_branch_length(
+    *,
+    branches: tuple[Expression, Expression],
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length both branches produce, if they agree."""
+    lengths = {
+        _known_sequence_length(
+            expression=branch,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+        for branch in branches
+    }
+    return lengths.pop() if len(lengths) == 1 else None
+
+
+def _known_literal_length(
     *,
     expression: Expression,
     fixed_tuple_lengths: dict[str, int],
 ) -> int | None:
-    """Return the length of a sequence expression, if it is known.
-
-    ``None`` means that the length is not statically known.
-    """
+    """Return the length of a literal or a name, if it is known."""
     match expression:
         case (
             TupleExpr(items=items)
@@ -728,6 +882,43 @@ def _known_sequence_length(
             return fixed_tuple_lengths.get(name)
         case _:
             return None
+
+
+def _known_sequence_length(
+    *,
+    expression: Expression,
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the length of a sequence expression, if it is known.
+
+    ``None`` means that the length is not statically known.
+    """
+    match expression:
+        case AssignmentExpr(value=assigned_value):
+            return _known_sequence_length(
+                expression=assigned_value,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case ConditionalExpr(if_expr=if_expr, else_expr=else_expr):
+            return _known_branch_length(
+                branches=(if_expr, else_expr),
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case IndexExpr() as index_expression:
+            return _known_subscript_length(
+                expression=index_expression,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case OpExpr() as operator_expression:
+            return _known_operator_length(
+                expression=operator_expression,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case _:
+            return _known_literal_length(
+                expression=expression,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
 
 
 def _leading_positional_count(
@@ -895,6 +1086,33 @@ def _collect_call_exprs(
             assert_never(unreachable)
 
 
+def _bind_assignment_target(
+    *,
+    lvalue: Expression,
+    assignment: AssignmentStmt,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the names an assignment binds, and their lengths."""
+    names = _binding_target_names(lvalue)
+    if not isinstance(lvalue, NameExpr):
+        calls.bind(names)
+        return
+
+    if assignment.unanalyzed_type is None:
+        length = _known_sequence_length(
+            expression=assignment.rvalue,
+            fixed_tuple_lengths={},
+        )
+    else:
+        # An explicit annotation describes the name everywhere, so a
+        # variable-length annotation wins over the assigned value.
+        length = _fixed_tuple_annotation_length(
+            annotation=assignment.unanalyzed_type,
+            resolver=calls.resolver,
+        )
+    calls.bind_length(name=lvalue.name, length=length)
+
+
 def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
     statement: Statement,
     calls: _CollectedCalls,
@@ -904,10 +1122,14 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
     match statement:
         case ExpressionStmt(expr=expr):
             _collect_call_exprs(expr, calls)
-        case AssignmentStmt(rvalue=rvalue, lvalues=lvalues):
+        case AssignmentStmt(rvalue=rvalue, lvalues=lvalues) as assignment:
             _collect_call_exprs(rvalue, calls)
             for lvalue in lvalues:
-                calls.bind(_binding_target_names(lvalue))
+                _bind_assignment_target(
+                    lvalue=lvalue,
+                    assignment=assignment,
+                    calls=calls,
+                )
                 _collect_call_exprs(lvalue, calls)
         case OperatorAssignmentStmt(rvalue=rvalue, lvalue=lvalue):
             _collect_call_exprs(rvalue, calls)
@@ -1069,7 +1291,8 @@ def _collect_call_exprs_from_func_item(
     first_body_call_index = len(calls)
     calls.push_scope(is_comprehension=False)
     _collect_call_exprs(func_item.body, calls)
-    rebound_names = calls.pop_scope()
+    scope = calls.pop_scope()
+    rebound_names = scope.names
 
     parameter_names = {
         argument.variable.name for argument in func_item.arguments
@@ -1088,6 +1311,13 @@ def _collect_call_exprs_from_func_item(
         )
         is not None
     }
+    fixed_tuple_lengths.update(
+        {
+            name: length
+            for name, length in scope.assigned_lengths.items()
+            if length is not None
+        }
+    )
     _apply_scope_to_calls(
         calls=calls,
         first_call_index=first_body_call_index,
@@ -1359,7 +1589,7 @@ def _collect_call_exprs_from_comprehension(
     _apply_scope_to_calls(
         calls=calls,
         first_call_index=first_call_index,
-        names=calls.pop_scope(),
+        names=calls.pop_scope().names,
         fixed_tuple_lengths={},
     )
 
@@ -1771,10 +2001,27 @@ def _check_super_method_call(
         return
 
 
+def _module_assigned_lengths(
+    *,
+    module: MypyFile,
+    resolver: _AnnotationResolver,
+) -> dict[str, int]:
+    """Return module-level names assigned a sequence of known length."""
+    scope_calls = _CollectedCalls(resolver=resolver)
+    for statement in module.defs:
+        _collect_call_exprs(statement, scope_calls)
+    return {
+        name: length
+        for name, length in scope_calls.pop_scope().assigned_lengths.items()
+        if length is not None
+    }
+
+
 def _check_super_method_calls(
     ctx: ClassDefContext,
     *,
     ignore_names: list[str],
+    module_lengths: dict[str, dict[str, int]],
     pending_super_calls: _PendingSuperCalls,
     debug: bool,
 ) -> None:
@@ -1784,10 +2031,20 @@ def _check_super_method_calls(
     ``super().method(...)``
     (https://github.com/python/mypy/issues/21744).
     """
-    path = ctx.api.modules[ctx.api.cur_mod_id].path
-    calls = _iter_call_exprs(
-        ctx.cls.defs,
-        resolver=_AnnotationResolver(api=ctx.api, context=ctx.cls),
+    module = ctx.api.modules[ctx.api.cur_mod_id]
+    path = module.path
+    resolver = _AnnotationResolver(api=ctx.api, context=ctx.cls)
+    calls = _iter_call_exprs(ctx.cls.defs, resolver=resolver)
+    if ctx.api.cur_mod_id not in module_lengths:
+        module_lengths[ctx.api.cur_mod_id] = _module_assigned_lengths(
+            module=module,
+            resolver=resolver,
+        )
+    _apply_scope_to_calls(
+        calls=calls,
+        first_call_index=0,
+        names=set(module_lengths[ctx.api.cur_mod_id]),
+        fixed_tuple_lengths=module_lengths[ctx.api.cur_mod_id],
     )
     for expr in calls:
         method_name = _super_method_name(expr=expr)
@@ -1985,6 +2242,7 @@ class KeywordOnlyPlugin(Plugin):
         """
         super().__init__(options=options)
         self._pending_super_calls: _PendingSuperCalls = {}
+        self._module_lengths: dict[str, dict[str, int]] = {}
         configuration = _plugin_configuration(
             config_file_path=options.config_file,
         )
@@ -2039,6 +2297,7 @@ class KeywordOnlyPlugin(Plugin):
         return partial(
             _check_super_method_calls,
             ignore_names=self._ignore_names,
+            module_lengths=self._module_lengths,
             pending_super_calls=self._pending_super_calls,
             debug=self._debug,
         )
