@@ -2496,3 +2496,41 @@
     main:56: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:60: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:64: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_comprehension_and_nonlocal_scopes
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def leftmost_iterable(self, args: tuple[int, int]) -> None:
+            [None for args in [super().method(*args)]]
+
+        def later_iterable(self, args: tuple[int, int]) -> None:
+            [None for _ in [0] for args in [super().method(*args)]]
+
+        def nonlocal_declaration_only(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                nonlocal args
+                super(Child, self).method(*args)
+
+        def nonlocal_assignment(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                nonlocal args
+                args = (1,)  # type: ignore[assignment]
+
+            super(Child, self).method(*args)
+
+    class Number:
+        def __rpow__(self, base: int, modulo: int | None = None) -> "Number":
+            return self
+
+    def use(number: Number) -> object:
+        return 2**number
+  out: |-
+    main:7: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:15: error: Too many positional arguments for "method" of "Base"  [call-arg]

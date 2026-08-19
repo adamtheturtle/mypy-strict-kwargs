@@ -1,0 +1,2 @@
+Stop requiring a keyword argument for the modulo parameter of
+``__rpow__``, which a ternary ``pow()`` supplies by position.

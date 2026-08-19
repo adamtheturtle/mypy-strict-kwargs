@@ -123,6 +123,9 @@ class _Scope:
 
     names: set[str]
     is_comprehension: bool
+    # Names this scope declares ``nonlocal``, which belong to an
+    # enclosing function scope rather than to this one.
+    nonlocal_names: set[str]
     # Names assigned a sequence of known length, mapped to that length.
     # ``None`` marks a name whose length is not known everywhere.
     assigned_lengths: dict[str, int | None]
@@ -146,6 +149,7 @@ class _CollectedCalls(list[CallExpr]):
             _Scope(
                 names=set(),
                 is_comprehension=False,
+                nonlocal_names=set(),
                 assigned_lengths={},
                 annotations={},
             )
@@ -162,6 +166,7 @@ class _CollectedCalls(list[CallExpr]):
             _Scope(
                 names=set(),
                 is_comprehension=is_comprehension,
+                nonlocal_names=set(),
                 assigned_lengths={},
                 annotations=annotations,
             )
@@ -204,12 +209,18 @@ class _CollectedCalls(list[CallExpr]):
         """Finish a scope and return what it binds."""
         return self._scopes.pop()
 
+    def declare_nonlocal(self, names: set[str], /) -> None:
+        """Record names this scope declares ``nonlocal``.
+
+        A ``nonlocal`` declaration binds nothing by itself; it says that
+        assignments belong to an enclosing function scope.
+        """
+        self._scopes[-1].nonlocal_names |= names
+
     def bind(self, names: set[str], /) -> None:
         """Record names bound by the scope being collected."""
-        scope = self._scopes[-1]
-        scope.names |= names
         for name in names:
-            scope.assigned_lengths[name] = None
+            self.bind_length(name=name, length=None)
 
     def bind_length(self, *, name: str, length: int | None) -> None:
         """Record the length a name is assigned in this scope.
@@ -217,15 +228,27 @@ class _CollectedCalls(list[CallExpr]):
         A name assigned more than once keeps a length only when every
         assignment agrees.
         """
-        scope = self._scopes[-1]
-        scope.names.add(name)
-        if name in scope.assigned_lengths:
-            existing = scope.assigned_lengths[name]
-            scope.assigned_lengths[name] = (
-                length if existing == length else None
-            )
-            return
-        scope.assigned_lengths[name] = length
+        for scope in self._bound_scopes(name=name):
+            scope.names.add(name)
+            if name in scope.assigned_lengths:
+                existing = scope.assigned_lengths[name]
+                scope.assigned_lengths[name] = (
+                    length if existing == length else None
+                )
+                continue
+            scope.assigned_lengths[name] = length
+
+    def _bound_scopes(self, *, name: str) -> list[_Scope]:
+        """Return the scopes an assignment to a name binds in.
+
+        An assignment to a ``nonlocal`` name belongs to an enclosing
+        function scope, so every enclosing scope loses what it knew.
+        """
+        if name not in self._scopes[-1].nonlocal_names:
+            return [self._scopes[-1]]
+        return [scope for scope in self._scopes if not scope.is_comprehension][
+            :-1
+        ]
 
     def bind_in_function_scope(self, names: set[str], /) -> None:
         """Record names bound in the nearest enclosing function scope.
@@ -399,7 +422,7 @@ _IMPLICIT_POSITIONAL_ARGUMENT_COUNTS = {
     "__rmod__": 1,
     "__rmul__": 1,
     "__ror__": 1,
-    "__rpow__": 1,
+    "__rpow__": 2,
     "__rrshift__": 1,
     "__rshift__": 1,
     "__rsub__": 1,
@@ -1682,8 +1705,10 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
                 _collect_call_exprs(metaclass, calls)
             for keyword_expression in keywords.values():
                 _collect_call_exprs(keyword_expression, calls)
-        case GlobalDecl(names=names) | NonlocalDecl(names=names):
+        case GlobalDecl(names=names):
             calls.bind(set(names))
+        case NonlocalDecl(names=names):
+            calls.declare_nonlocal(set(names))
         case Import(ids=ids):
             calls.bind(
                 {
@@ -2002,15 +2027,16 @@ def _collect_call_exprs_from_comprehension(
     A comprehension is its own scope, so its targets shadow bindings of
     the same name in enclosing scopes.
     """
+    # The leftmost iterable is evaluated in the enclosing scope, so the
+    # comprehension's targets do not shadow anything within it.
+    _collect_call_exprs(sequences[0], calls)
     first_call_index = len(calls)
     calls.push_scope(is_comprehension=True, annotations={})
-    for index, sequence, conditions in zip(
-        indices,
-        sequences,
-        condlists,
-        strict=True,
+    for position, (index, sequence, conditions) in enumerate(
+        iterable=zip(indices, sequences, condlists, strict=True)
     ):
-        _collect_call_exprs(sequence, calls)
+        if position:
+            _collect_call_exprs(sequence, calls)
         _bind_iteration_target(index=index, iterable=sequence, calls=calls)
         _collect_call_exprs(index, calls)
         for condition in conditions:
