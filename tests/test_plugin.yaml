@@ -1236,3 +1236,46 @@
         Descriptor().__delete__(holder)
   out: |-
     main:16: error: Too many positional arguments for "__delete__" of "Descriptor"  [call-arg]
+
+- case: super_fixed_length_spreads
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+        def two(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def call(self, values: tuple[int], unknown: tuple[int, ...]) -> None:
+            super().method(*(*(1,),))
+            super().two(*(1, *(2,)))
+            super().method(*(*(), 1))
+            super().method(*[*(1,)])
+            super().two(*[1, *(2,)])
+            super().method(*[*(), 1])
+            super().method(*(*(), *(1,)))
+            super().method(*[*(), *(1,)])
+            super().method(*(*values,))
+            super().method(*[*values])
+            super().method(*((*(1,),)))
+            super().method(*(*(*(1,),),))
+            super().method(*(*unknown,))
+            super().method(*(*(*unknown,),))
+            super().method(*[*unknown, 1])
+  out: |-
+    main:10: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:11: error: Too many positional arguments for "two" of "Base"  [call-arg]
+    main:12: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:13: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:14: error: Too many positional arguments for "two" of "Base"  [call-arg]
+    main:15: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:16: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:17: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:18: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:19: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:20: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:21: error: Too many positional arguments for "method" of "Base"  [call-arg]
