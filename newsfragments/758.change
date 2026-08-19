@@ -1,0 +1,2 @@
+Report a configuration error instead of crashing when the
+``mypy_strict_kwargs`` configuration section is not a table.

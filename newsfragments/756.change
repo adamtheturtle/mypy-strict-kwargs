@@ -1,0 +1,2 @@
+Report a configuration error instead of silently splitting a string
+``ignore_names`` value into characters.
