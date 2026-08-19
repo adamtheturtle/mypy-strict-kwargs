@@ -1799,3 +1799,49 @@
     main:14: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:17: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:20: error: Too many positional arguments for "two" of "Base"  [call-arg]
+
+- case: super_known_length_literal_spreads
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+        def text(self, value: str) -> None:
+            return None
+
+        def two(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def set_literal(self) -> None:
+            super().method(*{1})
+
+        def dict_literal(self) -> None:
+            super().method(*{1: None})
+
+        def string_literal(self) -> None:
+            super().text(*"x")
+
+        def bytes_literal(self) -> None:
+            super().method(*b"x")
+
+        def nested_set(self) -> None:
+            super().two(*(1, *{2}))
+
+        def dict_spread(self, other: dict[int, None]) -> None:
+            super().method(*{**other})
+
+        def escaped_bytes(self) -> None:
+            super().method(*b"\x00")
+
+        def unknown_set(self, other: set[int]) -> None:
+            super().method(*{*other})
+  out: |-
+    main:13: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:16: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:19: error: Too many positional arguments for "text" of "Base"  [call-arg]
+    main:22: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:25: error: Too many positional arguments for "two" of "Base"  [call-arg]
