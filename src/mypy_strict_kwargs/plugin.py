@@ -89,6 +89,7 @@ from mypy.patterns import (
     ValuePattern,
 )
 from mypy.plugin import (
+    AttributeContext,
     ClassDefContext,
     FunctionSigContext,
     MethodSigContext,
@@ -1615,59 +1616,91 @@ def _iter_call_exprs(
     return calls
 
 
-def _assigned_staticmethod_target(
-    *,
-    class_def: ClassDef,
-    method_name: str,
-) -> FuncDef | OverloadedFuncDef | Decorator | None:
-    """Return the callable wrapped by an assigned ``staticmethod``."""
-    for statement in class_def.defs.body:
-        match statement:
-            case AssignmentStmt(
-                lvalues=[NameExpr(name=name)],
-                rvalue=CallExpr(
-                    callee=NameExpr(fullname="builtins.staticmethod"),
-                    args=[
-                        NameExpr(
-                            node=(
-                                FuncDef() | OverloadedFuncDef() | Decorator()
-                            ) as target
-                        )
-                    ],
-                ),
-            ) if name == method_name:
-                return target
-            case _:
-                continue
-    return None
-
-
 @dataclass(frozen=True, kw_only=True)
-class _ResolvedSuperMember:
-    """A resolved ``super()`` member node and its assigned full name."""
+class _PendingSuperCall:
+    """A ``super()`` call whose member type is not known yet.
 
-    node: FuncDef | OverloadedFuncDef | Decorator | None
-    assigned_fullname: str | None
+    A member which is not a method -- an assigned function, a callable
+    object, a descriptor -- has no type during semantic analysis, so the
+    call is checked later from the attribute hook.
+    """
+
+    call: CallExpr
+    method_name: str
+    class_name: str
+    fixed_tuple_lengths: dict[str, int]
 
 
-def _resolved_super_member_node(
+_PendingSuperCalls = dict[tuple[str, int, int], _PendingSuperCall]
+
+
+def _pending_super_call_key(
     *,
-    node: SymbolNode | None,
-    class_def: ClassDef,
-    method_name: str,
-) -> _ResolvedSuperMember:
-    """Resolve a supported member node and its assigned full name."""
-    if isinstance(node, Var):
-        return _ResolvedSuperMember(
-            node=_assigned_staticmethod_target(
-                class_def=class_def,
-                method_name=method_name,
-            ),
-            assigned_fullname=node.fullname,
+    path: str,
+    expr: CallExpr,
+) -> tuple[str, int, int]:
+    """Return the key identifying a ``super()`` call expression."""
+    callee = expr.callee
+    return (path, callee.line, callee.column)
+
+
+def _instance_call_signature(*, instance: Instance) -> FunctionLike | None:
+    """Return the signature of a callable object's ``__call__``."""
+    symbol = instance.type.get(name="__call__")
+    signature = None if symbol is None else get_proper_type(typ=symbol.type)
+    return signature if isinstance(signature, FunctionLike) else None
+
+
+def _check_pending_super_call(
+    ctx: AttributeContext,
+    *,
+    fullname: str,
+    ignore_names: list[str],
+    pending_super_calls: _PendingSuperCalls,
+    debug: bool,
+) -> Type:
+    """Check a ``super()`` call to a member which is not a method."""
+    context = ctx.context
+    if not isinstance(context, SuperExpr):
+        return ctx.default_attr_type
+
+    pending = pending_super_calls.get(
+        (ctx.api.path, context.line, context.column)
+    )
+    if pending is None:
+        return ctx.default_attr_type
+
+    if debug:
+        _write_debug_fullname(fullname=fullname, path=ctx.api.path)
+
+    if fullname in ignore_names:
+        return ctx.default_attr_type
+
+    attribute_type = get_proper_type(typ=ctx.default_attr_type)
+    signature: FunctionLike | None = None
+    skip_bound_argument = False
+    if isinstance(attribute_type, FunctionLike):
+        signature = attribute_type
+    elif isinstance(attribute_type, Instance):
+        # A callable object supplies its own ``self``.
+        signature = _instance_call_signature(instance=attribute_type)
+        skip_bound_argument = True
+
+    if signature is not None and _super_call_disallows_positional_argument(
+        call=pending.call,
+        signature=signature,
+        fullname=fullname,
+        ignore_names=ignore_names,
+        skip_bound_argument=skip_bound_argument,
+        fixed_tuple_lengths=pending.fixed_tuple_lengths,
+    ):
+        ctx.api.fail(
+            f'Too many positional arguments for "{pending.method_name}" '
+            f'of "{pending.class_name}"',
+            pending.call,
+            code=CALL_ARG,
         )
-    if isinstance(node, FuncDef | OverloadedFuncDef | Decorator):
-        return _ResolvedSuperMember(node=node, assigned_fullname=None)
-    return _ResolvedSuperMember(node=None, assigned_fullname=None)
+    return ctx.default_attr_type
 
 
 def _check_super_method_call(
@@ -1677,6 +1710,8 @@ def _check_super_method_call(
     method_name: str,
     ignore_names: list[str],
     fixed_tuple_lengths: dict[str, int],
+    pending_super_calls: _PendingSuperCalls,
+    path: str,
     debug: bool,
 ) -> None:
     """Check one ``super()`` method call expression."""
@@ -1685,35 +1720,30 @@ def _check_super_method_call(
         if symbol is None:
             continue
 
-        resolved = _resolved_super_member_node(
-            node=symbol.node,
-            class_def=info.defn,
-            method_name=method_name,
-        )
-        assigned_fullname = resolved.assigned_fullname
-
-        match resolved.node:
+        match symbol.node:
             case FuncDef() | OverloadedFuncDef() as node:
-                fullname = assigned_fullname or node.fullname
+                fullname = node.fullname
                 typ = node.type
-                skip_bound_argument = (
-                    assigned_fullname is None and node.has_self_or_cls_argument
-                )
+                skip_bound_argument = node.has_self_or_cls_argument
             case Decorator() as node:
-                fullname = assigned_fullname or node.fullname
+                fullname = node.fullname
                 typ = node.func.type
-                skip_bound_argument = (
-                    assigned_fullname is None
-                    and node.func.has_self_or_cls_argument
-                )
+                skip_bound_argument = node.func.has_self_or_cls_argument
             case _:
+                # The member is not a method, so its type is only known
+                # once type checking runs.
+                pending_super_calls[
+                    _pending_super_call_key(path=path, expr=expr)
+                ] = _PendingSuperCall(
+                    call=expr,
+                    method_name=method_name,
+                    class_name=info.name,
+                    fixed_tuple_lengths=fixed_tuple_lengths,
+                )
                 return
 
         if debug:
-            _write_debug_fullname(
-                fullname=fullname,
-                path=ctx.api.modules[ctx.api.cur_mod_id].path,
-            )
+            _write_debug_fullname(fullname=fullname, path=path)
 
         if fullname in ignore_names:
             return
@@ -1745,6 +1775,7 @@ def _check_super_method_calls(
     ctx: ClassDefContext,
     *,
     ignore_names: list[str],
+    pending_super_calls: _PendingSuperCalls,
     debug: bool,
 ) -> None:
     """Check ``super()`` method calls in a class body.
@@ -1753,6 +1784,7 @@ def _check_super_method_calls(
     ``super().method(...)``
     (https://github.com/python/mypy/issues/21744).
     """
+    path = ctx.api.modules[ctx.api.cur_mod_id].path
     calls = _iter_call_exprs(
         ctx.cls.defs,
         resolver=_AnnotationResolver(api=ctx.api, context=ctx.cls),
@@ -1767,6 +1799,8 @@ def _check_super_method_calls(
             method_name=method_name,
             ignore_names=ignore_names,
             fixed_tuple_lengths=calls.fixed_tuple_lengths.get(expr, {}),
+            pending_super_calls=pending_super_calls,
+            path=path,
             debug=debug,
         )
 
@@ -1950,6 +1984,7 @@ class KeywordOnlyPlugin(Plugin):
         This is not friendly to errors yet.
         """
         super().__init__(options=options)
+        self._pending_super_calls: _PendingSuperCalls = {}
         configuration = _plugin_configuration(
             config_file_path=options.config_file,
         )
@@ -2004,6 +2039,24 @@ class KeywordOnlyPlugin(Plugin):
         return partial(
             _check_super_method_calls,
             ignore_names=self._ignore_names,
+            pending_super_calls=self._pending_super_calls,
+            debug=self._debug,
+        )
+
+    def get_attribute_hook(
+        self,
+        fullname: str,
+    ) -> Callable[[AttributeContext], Type] | None:
+        """Check ``super()`` calls to members which are not methods.
+
+        The type of such a member is only known once type checking
+        runs, which is after the base class hook which finds the call.
+        """
+        return partial(
+            _check_pending_super_call,
+            fullname=fullname,
+            ignore_names=self._ignore_names,
+            pending_super_calls=self._pending_super_calls,
             debug=self._debug,
         )
 

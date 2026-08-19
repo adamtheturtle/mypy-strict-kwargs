@@ -1952,3 +1952,138 @@
     main:21: error: Too many positional arguments for "function"  [call-arg]
     main:23: error: Too many positional arguments for "method" of "C"  [call-arg]
     main:24: error: Too many positional arguments for "C"  [call-arg]
+
+- case: super_non_method_members
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from collections.abc import Callable
+    from typing import Any, cast
+
+    def implementation(self: object, value: int) -> None: ...
+    def plain(value: int) -> None: ...
+    def class_implementation(cls: type[object], value: int) -> None: ...
+    alias = plain
+
+    class Helpers:
+        @staticmethod
+        def helper(value: int) -> None: ...
+
+        @staticmethod
+        def class_helper(cls: type[object], value: int) -> None: ...
+
+    class CallableObject:
+        def __call__(self, value: int) -> None: ...
+
+    class Holder:
+        def bound(self, value: int) -> None: ...
+
+    def decorate(function: Callable[..., None]) -> Callable[..., None]:
+        return function
+
+    class DecoratedCall:
+        @decorate
+        def __call__(self, value: int) -> None: ...
+
+    class NotCallable:
+        pass
+
+    class Base:
+        assigned_function = implementation
+        assigned_class_method = classmethod(class_implementation)
+        lambda_static_method = staticmethod(lambda value: None)
+        callable_object = CallableObject()
+        qualified_static_method = staticmethod(Helpers.helper)
+        aliased_static_method = staticmethod(alias)
+        lambda_class_method = classmethod(lambda cls, value: None)
+        conditional_static_method = staticmethod(plain if True else plain)
+        tuple_static_method = staticmethod((plain,)[0])
+        dict_static_method = staticmethod({"a": plain}["a"])
+        list_static_method = staticmethod([plain][0])
+        qualified_class_method = classmethod(Helpers.class_helper)
+        conditional_class_method = classmethod(
+            class_implementation if True else class_implementation
+        )
+        tuple_class_method = classmethod((class_implementation,)[0])
+        dict_class_method = classmethod({"a": class_implementation}["a"])
+        list_class_method = classmethod([class_implementation][0])
+        callable_static_method = staticmethod(CallableObject())
+        bound_static_method = staticmethod(Holder().bound)
+        anonymous = staticmethod(cast(Callable[[int], None], plain))
+        positional_only = staticmethod(lambda value, /: None)
+        decorated_call = DecoratedCall()
+        not_callable = NotCallable()
+        field = 0
+        any_member: Any = plain
+
+    class Child(Base):
+        def call(self) -> None:
+            super().assigned_function(1)
+            super().assigned_class_method(1)
+            super().lambda_static_method(1)
+            super().callable_object(1)
+            super().qualified_static_method(1)
+            super().aliased_static_method(1)
+            super().lambda_class_method(1)
+            super().conditional_static_method(1)
+            super().tuple_static_method(1)
+            super().dict_static_method(1)
+            super().list_static_method(1)
+            super().qualified_class_method(1)
+            super().conditional_class_method(1)
+            super().tuple_class_method(1)
+            super().dict_class_method(1)
+            super().list_class_method(1)
+            super().callable_static_method(1)
+            super().bound_static_method(1)
+            super().anonymous(1)
+            super().positional_only(1)
+            super().assigned_function(value=1)
+            super().decorated_call(1)
+            super().not_callable(1)  # type: ignore[operator]
+            super().field
+            super().any_member(1)
+  out: |-
+    main:62: error: Too many positional arguments for "assigned_function" of "Base"  [call-arg]
+    main:63: error: Too many positional arguments for "assigned_class_method" of "Base"  [call-arg]
+    main:64: error: Too many positional arguments for "lambda_static_method" of "Base"  [call-arg]
+    main:65: error: Too many positional arguments for "callable_object" of "Base"  [call-arg]
+    main:66: error: Too many positional arguments for "qualified_static_method" of "Base"  [call-arg]
+    main:67: error: Too many positional arguments for "aliased_static_method" of "Base"  [call-arg]
+    main:68: error: Too many positional arguments for "lambda_class_method" of "Base"  [call-arg]
+    main:69: error: Too many positional arguments for "conditional_static_method" of "Base"  [call-arg]
+    main:70: error: Too many positional arguments for "tuple_static_method" of "Base"  [call-arg]
+    main:71: error: Too many positional arguments for "dict_static_method" of "Base"  [call-arg]
+    main:72: error: Too many positional arguments for "list_static_method" of "Base"  [call-arg]
+    main:73: error: Too many positional arguments for "qualified_class_method" of "Base"  [call-arg]
+    main:74: error: Too many positional arguments for "conditional_class_method" of "Base"  [call-arg]
+    main:75: error: Too many positional arguments for "tuple_class_method" of "Base"  [call-arg]
+    main:76: error: Too many positional arguments for "dict_class_method" of "Base"  [call-arg]
+    main:77: error: Too many positional arguments for "list_class_method" of "Base"  [call-arg]
+    main:78: error: Too many positional arguments for "callable_static_method" of "Base"  [call-arg]
+    main:79: error: Too many positional arguments for "bound_static_method" of "Base"  [call-arg]
+
+- case: super_non_method_member_ignore_names
+  disable_cache: true
+  files:
+    - path: pyproject.toml
+      content: |
+        [tool.mypy]
+        plugins = ["mypy_strict_kwargs"]
+
+        [tool.mypy_strict_kwargs]
+        ignore_names = ["main.Base.assigned"]
+  main: |-
+    def implementation(self: object, value: int) -> None: ...
+
+    class Base:
+        assigned = implementation
+        other = implementation
+
+    class Child(Base):
+        def call(self) -> None:
+            super().assigned(1)
+            super().other(1)
+  out: |-
+    main:10: error: Too many positional arguments for "other" of "Base"  [call-arg]

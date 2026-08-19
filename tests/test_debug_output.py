@@ -6,7 +6,13 @@ import pytest
 from mypy import api
 
 _SOURCE = """\
+def implementation(self: object, value: int) -> None:
+    return None
+
+
 class Base:
+    assigned = implementation
+
     def method(self, value: int) -> None:
         return None
 
@@ -14,6 +20,7 @@ class Base:
 class Child(Base):
     def call(self) -> None:
         super().method(1)
+        super().assigned(1)
 
 
 def function(value: int) -> None:
@@ -68,6 +75,18 @@ def test_super_method_fullname_is_written(
     names = _debug_names(tmp_path=tmp_path, capsys=capsys)
 
     assert "example.Base.method" in names
+
+
+def test_non_method_member_fullname_is_written(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The name of a ``super()`` member which is not a method is
+    written.
+    """
+    names = _debug_names(tmp_path=tmp_path, capsys=capsys)
+
+    assert "example.Base.assigned" in names
 
 
 def test_called_function_fullname_is_written(
