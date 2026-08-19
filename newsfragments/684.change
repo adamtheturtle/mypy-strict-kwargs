@@ -1,3 +1,0 @@
-Check positional arguments supplied to ``super()`` members which are
-not methods, such as assigned functions, static and class methods
-wrapping arbitrary callables, and callable objects.

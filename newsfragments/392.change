@@ -1,2 +1,0 @@
-Stop requiring keyword arguments for ``__aexit__`` so that ``async with``
-statements type check.

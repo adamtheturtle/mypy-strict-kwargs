@@ -1,3 +1,0 @@
-Resolve type aliases, ``NamedTuple`` types, ``NewType`` types and
-``Annotated`` wrappers when finding the length of a fixed tuple
-parameter used in a ``super()`` call.

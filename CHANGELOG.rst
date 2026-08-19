@@ -3,6 +3,77 @@ Changelog
 
 .. towncrier release notes start
 
+2026.08.19
+----------
+
+- Stop requiring keyword arguments for ``__aexit__`` so that ``async with``
+  statements type check.
+
+- Check positional arguments supplied to ``super()`` methods by unpacking
+  set, dictionary, string and bytes literals.
+
+- Check positional arguments supplied to ``super()`` methods by unpacking
+  a name or expression whose sequence length is statically known.
+
+- Check positional arguments supplied to ``super()`` methods from
+  declared types, such as the return type of an annotated function, an
+  annotated attribute, a ``cast()`` and a context manager.
+
+- Check positional arguments supplied to ``super()`` members which are
+  not methods, such as assigned functions, static and class methods
+  wrapping arbitrary callables, and callable objects.
+
+- Stop reporting false positives for ``super()`` calls where a name bound
+  by an enclosing scope is rebound nearer to the call.
+
+- Resolve type aliases, ``NamedTuple`` types, ``NewType`` types and
+  ``Annotated`` wrappers when finding the length of a fixed tuple
+  parameter used in a ``super()`` call.
+
+- Expand PEP 646 unpacks when counting the length of fixed tuple
+  annotations used in ``super()`` calls.
+
+- Check positional arguments supplied to ``super()`` methods from names
+  bound by iterating over annotated iterables of fixed tuples, and by
+  match captures.
+
+- Stop requiring keyword arguments for special methods which Python invokes
+  implicitly, such as ``__rdivmod__`` used by ``divmod()``.
+
+- Start ``super()`` method lookup at the right entry when the explicit
+  first argument is a qualified name or a class alias.
+
+- Print the name used to check a ``super()`` method call in debug output, so
+  that it can be added to ``ignore_names``.
+
+- Leave names found while checking type stubs out of debug output.
+
+- Check positional arguments supplied to ``super()`` methods through nested
+  spreads of known length.
+
+- Check positional arguments which ``functools.partial`` and
+  ``functools.partialmethod`` bind on the callable they wrap.
+
+- Report a configuration error instead of silently splitting a string
+  ``ignore_names`` value into characters.
+
+- Report a configuration error for non-string ``ignore_names`` entries.
+
+- Report a configuration error instead of crashing when the
+  ``mypy_strict_kwargs`` configuration section is not a table.
+
+- Report a configuration error for non-boolean ``debug`` values instead of
+  coercing them.
+
+- Stop comprehension targets from shadowing names in the leftmost iterable,
+  which is evaluated in the enclosing scope.
+
+- Treat a ``nonlocal`` declaration as an alias of an enclosing binding
+  rather than as a new binding.
+
+- Stop requiring a keyword argument for the modulo parameter of
+  ``__rpow__``, which a ternary ``pow()`` supplies by position.
+
 2026.07.19.1
 ------------
 

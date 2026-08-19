@@ -1,2 +1,0 @@
-Check positional arguments supplied to ``super()`` methods by unpacking
-a name or expression whose sequence length is statically known.

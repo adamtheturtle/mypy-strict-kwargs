@@ -1,3 +1,0 @@
-Check positional arguments supplied to ``super()`` methods from
-declared types, such as the return type of an annotated function, an
-annotated attribute, a ``cast()`` and a context manager.

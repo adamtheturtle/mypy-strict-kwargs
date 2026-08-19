@@ -1,2 +1,0 @@
-Start ``super()`` method lookup at the right entry when the explicit
-first argument is a qualified name or a class alias.

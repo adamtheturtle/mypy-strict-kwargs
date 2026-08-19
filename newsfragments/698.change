@@ -1,2 +1,0 @@
-Expand PEP 646 unpacks when counting the length of fixed tuple
-annotations used in ``super()`` calls.

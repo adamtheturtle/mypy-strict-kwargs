@@ -1,2 +1,0 @@
-Stop comprehension targets from shadowing names in the leftmost iterable,
-which is evaluated in the enclosing scope.
