@@ -131,14 +131,14 @@ class _Scope:
     # Names this scope declares ``global``, which belong to the module
     # rather than to any enclosing function scope.
     global_names: set[str]
-    # Names recorded here only because the scope which owns them was not
-    # known, which does not make this scope their owner.
-    borrowed_names: set[str]
     # Names assigned a sequence of known length, mapped to that length.
     # ``None`` marks a name whose length is not known everywhere.
     assigned_lengths: dict[str, int | None]
     # Annotations of the parameters this scope introduces.
     annotations: dict[str, Type]
+    # Every parameter this scope introduces, annotated or not.  A
+    # parameter is a binding even before the scope assigns to it.
+    parameters: set[str]
 
 
 def _record_length(
@@ -174,9 +174,9 @@ class _CollectedCalls(list[CallExpr]):
                 is_comprehension=False,
                 nonlocal_names=set(),
                 global_names=set(),
-                borrowed_names=set(),
                 assigned_lengths={},
                 annotations={},
+                parameters=set(),
             )
         ]
 
@@ -185,6 +185,7 @@ class _CollectedCalls(list[CallExpr]):
         *,
         is_comprehension: bool,
         annotations: dict[str, Type],
+        parameters: set[str],
     ) -> None:
         """Start collecting the names bound by a new scope."""
         self._scopes.append(
@@ -193,9 +194,9 @@ class _CollectedCalls(list[CallExpr]):
                 is_comprehension=is_comprehension,
                 nonlocal_names=set(),
                 global_names=set(),
-                borrowed_names=set(),
                 assigned_lengths={},
                 annotations=annotations,
+                parameters=parameters,
             )
         )
 
@@ -271,21 +272,11 @@ class _CollectedCalls(list[CallExpr]):
         A name assigned more than once keeps a length only when every
         assignment agrees.
         """
-        if name not in self._scopes[-1].nonlocal_names:
-            _record_length(scope=self._scopes[-1], name=name, length=length)
-            return
-
-        owner = self._nonlocal_owner(name=name)
-        if owner is not None:
-            _record_length(scope=owner, name=name, length=length)
-            return
-        # The owner is a parameter which no scope has recorded, so the
-        # assignment is recorded in every enclosing scope.  None of them
-        # becomes the owner, so a later assignment is recorded the same
-        # way and the two are merged.
-        for scope in self._enclosing_function_scopes():
-            _record_length(scope=scope, name=name, length=length)
-            scope.borrowed_names.add(name)
+        self._bind_length(
+            name=name,
+            length=length,
+            scope=self._scopes[-1],
+        )
 
     def bind_length_in_function_scope(
         self,
@@ -294,12 +285,32 @@ class _CollectedCalls(list[CallExpr]):
         length: int | None,
     ) -> None:
         """Record a length in the nearest enclosing function scope."""
-        function_scopes = [
-            scope for scope in self._scopes if not scope.is_comprehension
-        ]
-        _record_length(scope=function_scopes[-1], name=name, length=length)
+        self._bind_length(
+            name=name,
+            length=length,
+            scope=self._enclosing_function_scopes(include_current=True)[-1],
+        )
 
-    def _enclosing_function_scopes(self) -> list[_Scope]:
+    def _bind_length(
+        self,
+        *,
+        name: str,
+        length: int | None,
+        scope: _Scope,
+    ) -> None:
+        """Record a length in the scope an assignment belongs to."""
+        owner = scope
+        if name in scope.nonlocal_names:
+            # ``mypy`` rejects a ``nonlocal`` name which no enclosing
+            # scope binds, so an owner is found for anything it checks.
+            owner = self._nonlocal_owner(name=name) or scope
+        _record_length(scope=owner, name=name, length=length)
+
+    def _enclosing_function_scopes(
+        self,
+        *,
+        include_current: bool,
+    ) -> list[_Scope]:
         """Return the function scopes a ``nonlocal`` name can belong to.
 
         The outermost scope is the module, which ``nonlocal`` never
@@ -308,14 +319,15 @@ class _CollectedCalls(list[CallExpr]):
         function_scopes = [
             scope for scope in self._scopes if not scope.is_comprehension
         ]
+        if include_current:
+            return function_scopes[1:]
         return function_scopes[1:-1]
 
     def _nonlocal_owner(self, *, name: str) -> _Scope | None:
         """Return the scope a ``nonlocal`` name belongs to, if known."""
-        for scope in reversed(self._enclosing_function_scopes()):
-            if name in scope.borrowed_names:
-                continue
-            if name in scope.names or name in scope.annotations:
+        enclosing = self._enclosing_function_scopes(include_current=False)
+        for scope in reversed(enclosing):
+            if name in scope.names or name in scope.parameters:
                 return scope
         return None
 
@@ -1874,6 +1886,9 @@ def _collect_call_exprs_from_func_item(
     calls.push_scope(
         is_comprehension=False,
         annotations=parameter_annotations,
+        parameters={
+            argument.variable.name for argument in func_item.arguments
+        },
     )
     _collect_call_exprs(func_item.body, calls)
     scope = calls.pop_scope()
@@ -2130,6 +2145,21 @@ def _unbound_fixed_tuple_length(
     return None
 
 
+def _is_uninhabited(
+    *,
+    annotation: Type,
+    resolver: "_AnnotationResolver",
+) -> bool:
+    """Return whether an annotation has no values.
+
+    An annotation reaches here either as written or already analyzed,
+    depending on where it came from.
+    """
+    if isinstance(annotation, UnboundType):
+        return resolver.fullname(annotation.name) in _NEVER_FULLNAMES
+    return isinstance(get_proper_type(typ=annotation), UninhabitedType)
+
+
 def _union_fixed_tuple_length(
     *,
     items: list[Type],
@@ -2138,10 +2168,7 @@ def _union_fixed_tuple_length(
     """Return the length shared by every inhabited union item."""
     lengths: set[int] = set()
     for item in items:
-        if (
-            isinstance(item, UnboundType)
-            and resolver.fullname(item.name) in _NEVER_FULLNAMES
-        ):
+        if _is_uninhabited(annotation=item, resolver=resolver):
             continue
         length = _fixed_tuple_annotation_length(
             annotation=item,
@@ -2193,7 +2220,11 @@ def _collect_call_exprs_from_comprehension(
     # comprehension's targets do not shadow anything within it.
     _collect_call_exprs(sequences[0], calls)
     first_call_index = len(calls)
-    calls.push_scope(is_comprehension=True, annotations={})
+    calls.push_scope(
+        is_comprehension=True,
+        annotations={},
+        parameters=set(),
+    )
     for position, (index, sequence, conditions) in enumerate(
         iterable=zip(indices, sequences, condlists, strict=True)
     ):

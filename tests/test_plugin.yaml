@@ -2731,3 +2731,68 @@
             super(Child, self).method(*args)
   out: |-
     main:11: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_nonlocal_owners_and_analyzed_unions
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import Never
+
+    class Base:
+        def method(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    def get_pair() -> tuple[int, int] | Never:
+        return (1, 2)
+
+    class Child(Base):
+        attribute: tuple[int, int] | Never = (1, 2)
+
+        def nearer_parameter(self, args: tuple[int]) -> None:
+            def middle(args) -> None:
+                def inner() -> None:
+                    nonlocal args
+                    args = (1, 2)
+
+            super(Child, self).method(*args)
+
+        def walrus_nonlocal(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                nonlocal args
+                if args := (1,):  # type: ignore[assignment]
+                    pass
+
+            super(Child, self).method(*args)
+
+        def analyzed_union_attribute(self) -> None:
+            super(Child, self).method(*self.attribute)
+
+        def analyzed_union_return(self) -> None:
+            super(Child, self).method(*get_pair())
+  out: |-
+    main:30: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:33: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+# ``mypy`` rejects a ``nonlocal`` name which no enclosing scope binds
+# before the nested function, so the plugin never finds an owner here.
+- case: super_nonlocal_without_an_owner
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, first: int, /, second: int = 0) -> None:
+            return None
+
+    class Child(Base):
+        def call(self, args: tuple[int, int]) -> None:
+            def inner() -> None:
+                nonlocal values
+                values = (1, 2)
+
+            values = (1,)
+            super(Child, self).method(*args)
+  out: |-
+    main:8: error: No binding for nonlocal "values" found  [misc]
+    main:12: error: Too many positional arguments for "method" of "Base"  [call-arg]
