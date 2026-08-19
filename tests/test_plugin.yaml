@@ -2383,6 +2383,9 @@
 
         def nested_attribute(self) -> None:
             super().method(*self.holder.args)
+
+        def unrelated_attribute(self, holder: Holder) -> None:
+            super().method(*holder.args)
   out: |-
     main:29: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:32: error: Too many positional arguments for "method" of "Base"  [call-arg]

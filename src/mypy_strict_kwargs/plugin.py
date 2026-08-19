@@ -1108,13 +1108,20 @@ def _called_expression_length(
     )
 
 
+# Names which conventionally refer to the object a method is called on.
+# Only an attribute of one of these is looked up on the checked class;
+# any other name could refer to anything at all.
+_SELF_NAMES = frozenset({"cls", "self"})
+
+
 def _attribute_annotation(
     *,
     expression: MemberExpr,
     class_info: TypeInfo,
 ) -> Type | None:
     """Return the annotation of an attribute of the checked class."""
-    if not isinstance(expression.expr, NameExpr):
+    base = expression.expr
+    if not isinstance(base, NameExpr) or base.name not in _SELF_NAMES:
         return None
     symbol = class_info.get(name=expression.name)
     node = None if symbol is None else symbol.node
