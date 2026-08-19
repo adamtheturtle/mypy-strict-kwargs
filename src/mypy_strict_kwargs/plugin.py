@@ -93,6 +93,7 @@ from mypy.types import (
     FunctionLike,
     Type,
     UnboundType,
+    UnpackType,
 )
 
 _CallExprContainer = Expression | Statement
@@ -712,18 +713,57 @@ def _collect_call_exprs_from_func_item(
                 lengths[name] = fixed_tuple_lengths[name]
 
 
-def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
-    """Return the length of a fixed tuple annotation, if known."""
-    if not isinstance(annotation, UnboundType) or annotation.name not in {
+_TUPLE_ANNOTATION_NAMES = frozenset(
+    {
         "Tuple",
         "builtins.tuple",
         "tuple",
         "typing.Tuple",
-    }:
+    }
+)
+
+
+def _unpacked_annotation(*, annotation: Type) -> Type | None:
+    """Return the annotation unpacked by a PEP 646 ``*`` item.
+
+    ``None`` means that the item is not an unpack.  Both the star syntax
+    (``*tuple[int, int]``) and the ``Unpack[...]`` spelling are
+    recognized.
+    """
+    if isinstance(annotation, UnpackType):
+        return annotation.type
+    if (
+        isinstance(annotation, UnboundType)
+        and annotation.name.rsplit(sep=".", maxsplit=1)[-1] == "Unpack"
+        and len(annotation.args) == 1
+    ):
+        return annotation.args[0]
+    return None
+
+
+def _fixed_tuple_annotation_length(*, annotation: Type | None) -> int | None:
+    """Return the length of a fixed tuple annotation, if known."""
+    if (
+        not isinstance(annotation, UnboundType)
+        or annotation.name not in _TUPLE_ANNOTATION_NAMES
+    ):
         return None
+    if annotation.empty_tuple_index:
+        return 0
     if not annotation.args or isinstance(annotation.args[-1], EllipsisType):
         return None
-    return len(annotation.args)
+
+    length = 0
+    for item in annotation.args:
+        unpacked = _unpacked_annotation(annotation=item)
+        if unpacked is None:
+            length += 1
+            continue
+        unpacked_length = _fixed_tuple_annotation_length(annotation=unpacked)
+        if unpacked_length is None:
+            return None
+        length += unpacked_length
+    return length
 
 
 def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pylint: disable=too-complex,too-many-branches,too-many-statements
