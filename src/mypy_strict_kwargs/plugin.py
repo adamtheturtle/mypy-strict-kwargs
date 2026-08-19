@@ -20,6 +20,7 @@ from mypy.nodes import (
     AssignmentStmt,
     AwaitExpr,
     Block,
+    BytesExpr,
     CallExpr,
     CastExpr,
     ClassDef,
@@ -59,6 +60,7 @@ from mypy.nodes import (
     SliceExpr,
     StarExpr,
     Statement,
+    StrExpr,
     SuperExpr,
     SymbolNode,
     TemplateStrExpr,
@@ -498,6 +500,53 @@ def _super_method_mro(
     return ctx.cls.info.mro[super_type_index + 1 :]
 
 
+def _known_items_length(
+    *,
+    items: list[Expression],
+    fixed_tuple_lengths: dict[str, int],
+) -> int | None:
+    """Return the number of values a sequence literal holds, if known."""
+    total = 0
+    for item in items:
+        if not isinstance(item, StarExpr):
+            total += 1
+            continue
+        spread_length = _known_sequence_length(
+            expression=item.expr,
+            fixed_tuple_lengths=fixed_tuple_lengths,
+        )
+        if spread_length is None:
+            return None
+        total += spread_length
+    return total
+
+
+def _known_bytes_length(*, value: str) -> int | None:
+    """Return the number of bytes a bytes literal holds, if known.
+
+    ``mypy`` stores a bytes literal as text with non-printable bytes
+    escaped, so a value containing a backslash has no reliable length.
+    """
+    if "\\" in value:
+        return None
+    return len(value)
+
+
+def _known_dict_length(
+    *,
+    items: list[tuple[Expression | None, Expression]],
+) -> int | None:
+    """Return the number of keys a dictionary literal holds, if known.
+
+    Unpacking a dictionary yields its keys.  A ``**spread`` entry has a
+    ``None`` key and contributes an unknown number of keys.
+    """
+    keys = [key for key, _ in items]
+    if None in keys:
+        return None
+    return len(keys)
+
+
 def _known_sequence_length(
     *,
     expression: Expression,
@@ -508,20 +557,21 @@ def _known_sequence_length(
     ``None`` means that the length is not statically known.
     """
     match expression:
-        case TupleExpr(items=items) | ListExpr(items=items):
-            total = 0
-            for item in items:
-                if not isinstance(item, StarExpr):
-                    total += 1
-                    continue
-                spread_length = _known_sequence_length(
-                    expression=item.expr,
-                    fixed_tuple_lengths=fixed_tuple_lengths,
-                )
-                if spread_length is None:
-                    return None
-                total += spread_length
-            return total
+        case (
+            TupleExpr(items=items)
+            | ListExpr(items=items)
+            | SetExpr(items=items)
+        ):
+            return _known_items_length(
+                items=items,
+                fixed_tuple_lengths=fixed_tuple_lengths,
+            )
+        case DictExpr(items=dict_items):
+            return _known_dict_length(items=dict_items)
+        case StrExpr(value=value):
+            return len(value)
+        case BytesExpr(value=value):
+            return _known_bytes_length(value=value)
         case NameExpr(name=name):
             return fixed_tuple_lengths.get(name)
         case _:
