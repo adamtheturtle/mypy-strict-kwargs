@@ -1,2 +1,0 @@
-Capture standard error when checking real projects for crashes, which is
-where the crash is reported.

@@ -1,3 +1,0 @@
-Compose with mypy's own signature hooks instead of shadowing them, so
-checks such as ``dataclasses.replace`` keep working and TypedDict methods
-stop reporting a misleading second error.

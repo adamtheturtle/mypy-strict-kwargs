@@ -1,2 +1,0 @@
-Report positional calls to overloaded functions as call-arg errors
-instead of a generic call-overload message.

@@ -3,6 +3,25 @@ Changelog
 
 .. towncrier release notes start
 
+2026.08.20.1
+------------
+
+- Report positional calls to overloaded functions as call-arg errors
+  instead of a generic call-overload message.
+
+- Stop reformatting the plugin test cases, whose assertions depend on the
+  line numbers of the source they embed.
+
+- Type check real projects with the plugin on a schedule, so that a crash
+  cannot reach a release.
+
+- Compose with mypy's own signature hooks instead of shadowing them, so
+  checks such as ``dataclasses.replace`` keep working and TypedDict methods
+  stop reporting a misleading second error.
+
+- Capture standard error when checking real projects for crashes, which is
+  where the crash is reported.
+
 2026.08.20
 ----------
 

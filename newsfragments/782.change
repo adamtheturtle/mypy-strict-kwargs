@@ -1,2 +1,0 @@
-Stop reformatting the plugin test cases, whose assertions depend on the
-line numbers of the source they embed.
