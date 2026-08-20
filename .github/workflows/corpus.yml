@@ -69,11 +69,14 @@ jobs:
         env:
           PACKAGE: ${{ matrix.package }}
         run: |
+          # An internal error is written to standard error, so both
+          # streams are captured.  Errors on standard output are
+          # expected, so the exit status is ignored.
           uv run --extra=dev mypy \
               --no-incremental \
               --cache-dir=/dev/null \
               --config-file=corpus-mypy.ini \
-              "$PACKAGE" | tee mypy-output.txt || true
+              "$PACKAGE" 2>&1 | tee mypy-output.txt || true
 
       - name: Fail on an internal error
         run: |
