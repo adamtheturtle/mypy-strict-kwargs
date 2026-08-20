@@ -1,0 +1,2 @@
+Recognize a ``Union[...]`` annotation and a type alias to a union when
+finding the length of a fixed tuple.

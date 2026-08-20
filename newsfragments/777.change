@@ -1,0 +1,4 @@
+Follow the length of a sequence bound by an assignment expression, and by
+an assignment which follows a ``global`` declaration, and stop a
+``global`` declaration from letting an enclosing scope's length show
+through.

@@ -1,5 +1,6 @@
 INI
 iterable
+namespace
 pragma
 pyrefly
 unanalyzed

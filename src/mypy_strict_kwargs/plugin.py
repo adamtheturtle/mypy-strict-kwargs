@@ -56,6 +56,7 @@ from mypy.nodes import (
     OpExpr,
     OverloadedFuncDef,
     RaiseStmt,
+    RefExpr,
     ReturnStmt,
     RevealExpr,
     SetComprehension,
@@ -109,6 +110,7 @@ from mypy.types import (
     Type,
     TypeVarTupleType,
     UnboundType,
+    UninhabitedType,
     UnionType,
     UnpackType,
     get_proper_type,
@@ -126,11 +128,32 @@ class _Scope:
     # Names this scope declares ``nonlocal``, which belong to an
     # enclosing function scope rather than to this one.
     nonlocal_names: set[str]
+    # Names this scope declares ``global``, which belong to the module
+    # rather than to any enclosing function scope.
+    global_names: set[str]
     # Names assigned a sequence of known length, mapped to that length.
     # ``None`` marks a name whose length is not known everywhere.
     assigned_lengths: dict[str, int | None]
     # Annotations of the parameters this scope introduces.
     annotations: dict[str, Type]
+    # Every parameter this scope introduces, annotated or not.  A
+    # parameter is a binding even before the scope assigns to it.
+    parameters: set[str]
+
+
+def _record_length(
+    *,
+    scope: _Scope,
+    name: str,
+    length: int | None,
+) -> None:
+    """Record in one scope the length a name is assigned."""
+    scope.names.add(name)
+    if name in scope.assigned_lengths:
+        existing = scope.assigned_lengths[name]
+        scope.assigned_lengths[name] = length if existing == length else None
+        return
+    scope.assigned_lengths[name] = length
 
 
 class _CollectedCalls(list[CallExpr]):
@@ -150,8 +173,10 @@ class _CollectedCalls(list[CallExpr]):
                 names=set(),
                 is_comprehension=False,
                 nonlocal_names=set(),
+                global_names=set(),
                 assigned_lengths={},
                 annotations={},
+                parameters=set(),
             )
         ]
 
@@ -160,6 +185,7 @@ class _CollectedCalls(list[CallExpr]):
         *,
         is_comprehension: bool,
         annotations: dict[str, Type],
+        parameters: set[str],
     ) -> None:
         """Start collecting the names bound by a new scope."""
         self._scopes.append(
@@ -167,8 +193,10 @@ class _CollectedCalls(list[CallExpr]):
                 names=set(),
                 is_comprehension=is_comprehension,
                 nonlocal_names=set(),
+                global_names=set(),
                 assigned_lengths={},
                 annotations=annotations,
+                parameters=parameters,
             )
         )
 
@@ -176,11 +204,8 @@ class _CollectedCalls(list[CallExpr]):
         """Return the known sequence lengths of visible names."""
         lengths: dict[str, int] = {}
         for scope in self._scopes:
-            for name, length in scope.assigned_lengths.items():
-                if length is None:
-                    lengths.pop(name, None)
-                else:
-                    lengths[name] = length
+            # A parameter's annotation describes it until the scope
+            # assigns to it, so assignments are applied afterwards.
             for name, annotation in scope.annotations.items():
                 annotation_length = _fixed_tuple_annotation_length(
                     annotation=annotation,
@@ -190,6 +215,15 @@ class _CollectedCalls(list[CallExpr]):
                     lengths.pop(name, None)
                 else:
                     lengths[name] = annotation_length
+            # A ``global`` name is the module's, not an enclosing
+            # scope's, until this scope assigns to it.
+            for name in scope.global_names:
+                lengths.pop(name, None)
+            for name, length in scope.assigned_lengths.items():
+                if length is None:
+                    lengths.pop(name, None)
+                else:
+                    lengths[name] = length
         return lengths
 
     def annotation(self, name: str, /) -> Type | None:
@@ -222,54 +256,82 @@ class _CollectedCalls(list[CallExpr]):
         for name in names:
             self.bind_length(name=name, length=None)
 
+    def declare_global(self, names: set[str], /) -> None:
+        """Record names this scope declares ``global``.
+
+        The declaration binds nothing by itself, but it does stop the
+        name resolving to an enclosing scope.
+        """
+        scope = self._scopes[-1]
+        scope.names |= names
+        scope.global_names |= names
+
     def bind_length(self, *, name: str, length: int | None) -> None:
         """Record the length a name is assigned in this scope.
 
         A name assigned more than once keeps a length only when every
         assignment agrees.
         """
-        for scope in self._bound_scopes(name=name):
-            scope.names.add(name)
-            if name in scope.assigned_lengths:
-                existing = scope.assigned_lengths[name]
-                scope.assigned_lengths[name] = (
-                    length if existing == length else None
-                )
-                continue
-            scope.assigned_lengths[name] = length
+        self._bind_length(
+            name=name,
+            length=length,
+            scope=self._scopes[-1],
+        )
 
-    def _bound_scopes(self, *, name: str) -> list[_Scope]:
-        """Return the scopes an assignment to a name binds in.
+    def bind_length_in_function_scope(
+        self,
+        *,
+        name: str,
+        length: int | None,
+    ) -> None:
+        """Record a length in the nearest enclosing function scope."""
+        self._bind_length(
+            name=name,
+            length=length,
+            scope=self._nearest_function_scope(),
+        )
 
-        An assignment to a ``nonlocal`` name belongs to the nearest
-        enclosing function scope which binds that name.  Scopes beyond
-        that one keep what they knew, because ``nonlocal`` never reaches
-        them.  A name no enclosing scope binds yet may be an enclosing
-        parameter, which is not recorded as a binding, so every enclosing
-        scope loses what it knew.
+    def _bind_length(
+        self,
+        *,
+        name: str,
+        length: int | None,
+        scope: _Scope,
+    ) -> None:
+        """Record a length in the scope an assignment belongs to."""
+        owner = scope
+        if name in scope.nonlocal_names:
+            # ``mypy`` rejects a ``nonlocal`` name which no enclosing
+            # scope binds, so an owner is found for anything it checks.
+            owner = self._nonlocal_owner(name=name) or scope
+        _record_length(scope=owner, name=name, length=length)
+
+    def _function_scopes(self) -> list[_Scope]:
+        """Return the scopes which are not comprehensions."""
+        return [scope for scope in self._scopes if not scope.is_comprehension]
+
+    def _nearest_function_scope(self) -> _Scope:
+        """Return the scope an assignment expression binds in.
+
+        A comprehension is the one scope which an assignment expression
+        does not bind in, and the module is a scope like any other here.
         """
-        if name not in self._scopes[-1].nonlocal_names:
-            return [self._scopes[-1]]
-        enclosing = [
-            scope for scope in self._scopes if not scope.is_comprehension
-        ][:-1]
-        bound: list[_Scope] = []
-        for scope in reversed(enclosing):
-            bound.append(scope)
-            if name in scope.names:
-                break
-        return bound
+        return self._function_scopes()[-1]
 
-    def bind_in_function_scope(self, names: set[str], /) -> None:
-        """Record names bound in the nearest enclosing function scope.
+    def _enclosing_function_scopes(self) -> list[_Scope]:
+        """Return the function scopes a ``nonlocal`` name can belong to.
 
-        An assignment expression inside a comprehension binds in the
-        scope containing the comprehension, not in the comprehension.
+        The outermost scope is the module, which ``nonlocal`` never
+        reaches, and the innermost is the one making the assignment.
         """
-        function_scopes = [
-            scope for scope in self._scopes if not scope.is_comprehension
-        ]
-        function_scopes[-1].names |= names
+        return self._function_scopes()[1:-1]
+
+    def _nonlocal_owner(self, *, name: str) -> _Scope | None:
+        """Return the scope a ``nonlocal`` name belongs to, if known."""
+        for scope in reversed(self._enclosing_function_scopes()):
+            if name in scope.names or name in scope.parameters:
+                return scope
+        return None
 
 
 def _binding_target_names(target: Expression, /) -> set[str]:
@@ -669,6 +731,30 @@ def _dotted_name(*, expression: Expression) -> str | None:
             return None
 
 
+def _referenced_node(
+    *,
+    api: SemanticAnalyzerPluginInterface,
+    expression: Expression,
+) -> SymbolNode | None:
+    """Return the definition a reference expression refers to.
+
+    A reference which is already resolved carries its definition, which
+    matters for a name defined in another module: looking the name up
+    again would use the namespace of the module being analyzed.
+    """
+    if isinstance(expression, RefExpr) and expression.node is not None:
+        return expression.node
+    name = _dotted_name(expression=expression)
+    if name is None:
+        return None
+    symbol = api.lookup_qualified(
+        name=name,
+        ctx=expression,
+        suppress_errors=True,
+    )
+    return None if symbol is None else symbol.node
+
+
 def _aliased_class_info(
     *,
     api: SemanticAnalyzerPluginInterface,
@@ -712,15 +798,7 @@ def _named_class_info(
     ``visited`` holds the aliases already followed, so that a cyclic
     alias definition does not loop forever.
     """
-    name = _dotted_name(expression=expression)
-    if name is None:
-        return None
-    symbol = api.lookup_qualified(
-        name=name,
-        ctx=expression,
-        suppress_errors=True,
-    )
-    node = None if symbol is None else symbol.node
+    node = _referenced_node(api=api, expression=expression)
     if isinstance(node, TypeInfo):
         return node
     if isinstance(node, TypeAlias):
@@ -735,6 +813,28 @@ def _named_class_info(
     return None
 
 
+def _mro_class_info(
+    *,
+    mro: list[TypeInfo],
+    expression: Expression,
+) -> TypeInfo | None:
+    """Return the entry of a resolution order an expression names.
+
+    The starting type of a ``super()`` call is always in the resolution
+    order, so a name which is not resolved yet -- the class being
+    defined names itself this way -- is matched there instead.
+    """
+    name = _dotted_name(expression=expression)
+    if name is None:
+        return None
+    matches = [
+        info
+        for info in mro
+        if info.name == name.rsplit(sep=".", maxsplit=1)[-1]
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _super_method_mro(
     *,
     ctx: ClassDefContext,
@@ -745,18 +845,24 @@ def _super_method_mro(
     if not isinstance(callee, SuperExpr) or not callee.call.args:
         return ctx.cls.info.mro[1:]
 
+    explicit_super_type = callee.call.args[0]
     explicit_super_info = _named_class_info(
         api=ctx.api,
-        expression=callee.call.args[0],
+        expression=explicit_super_type,
         visited=frozenset(),
+    ) or _mro_class_info(
+        mro=ctx.cls.info.mro,
+        expression=explicit_super_type,
     )
     if explicit_super_info is None:
-        return ctx.cls.info.mro[1:]
+        # Which entries are searched depends on a starting type which
+        # cannot be resolved, so nothing here is known.
+        return []
 
     try:
         super_type_index = ctx.cls.info.mro.index(explicit_super_info)
     except ValueError:
-        return ctx.cls.info.mro[1:]
+        return []
     return ctx.cls.info.mro[super_type_index + 1 :]
 
 
@@ -1541,6 +1647,26 @@ def _bind_context_manager_target(
     )
 
 
+def _bind_assignment_expression(
+    *,
+    target: NameExpr,
+    value: Expression,
+    calls: _CollectedCalls,
+) -> None:
+    """Record the name an assignment expression binds.
+
+    An assignment expression inside a comprehension binds in the scope
+    containing the comprehension, not in the comprehension.
+    """
+    calls.bind_length_in_function_scope(
+        name=target.name,
+        length=_known_sequence_length(
+            expression=value,
+            fixed_tuple_lengths=calls.visible_lengths(),
+        ),
+    )
+
+
 def _bind_assignment_target(
     *,
     lvalue: Expression,
@@ -1723,7 +1849,7 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
             for keyword_expression in keywords.values():
                 _collect_call_exprs(keyword_expression, calls)
         case GlobalDecl(names=names):
-            calls.bind(set(names))
+            calls.declare_global(set(names))
         case NonlocalDecl(names=names):
             calls.declare_nonlocal(set(names))
         case Import(ids=ids):
@@ -1762,6 +1888,9 @@ def _collect_call_exprs_from_func_item(
     calls.push_scope(
         is_comprehension=False,
         annotations=parameter_annotations,
+        parameters={
+            argument.variable.name for argument in func_item.arguments
+        },
     )
     _collect_call_exprs(func_item.body, calls)
     scope = calls.pop_scope()
@@ -1807,6 +1936,7 @@ _ANNOTATED_FULLNAMES = frozenset(
     {"typing.Annotated", "typing_extensions.Annotated"}
 )
 _UNPACK_FULLNAMES = frozenset({"typing.Unpack", "typing_extensions.Unpack"})
+_UNION_FULLNAMES = frozenset({"typing.Union", "typing_extensions.Union"})
 _NEVER_FULLNAMES = frozenset(
     {
         "typing.NoReturn",
@@ -1843,6 +1973,28 @@ class _AnnotationResolver:
         return None if symbol is None else symbol.node
 
 
+def _union_type_length(
+    *,
+    union: UnionType,
+    type_var_tuple_length: int | None,
+) -> int | None:
+    """Return the length shared by every inhabited union item."""
+    lengths: set[int] = set()
+    for item in union.items:
+        if isinstance(get_proper_type(typ=item), UninhabitedType):
+            continue
+        length = _fixed_tuple_type_length(
+            tuple_type=item,
+            type_var_tuple_length=type_var_tuple_length,
+        )
+        if length is None:
+            return None
+        lengths.add(length)
+    if len(lengths) != 1:
+        return None
+    return lengths.pop()
+
+
 def _fixed_tuple_type_length(
     *,
     tuple_type: Type | None,
@@ -1854,6 +2006,11 @@ def _fixed_tuple_type_length(
     stands for, or ``None`` when that is not known.
     """
     proper_type = get_proper_type(typ=tuple_type)
+    if isinstance(proper_type, UnionType):
+        return _union_type_length(
+            union=proper_type,
+            type_var_tuple_length=type_var_tuple_length,
+        )
     if isinstance(proper_type, Instance):
         proper_type = proper_type.type.tuple_type
     if not isinstance(proper_type, TupleType):
@@ -1967,6 +2124,11 @@ def _unbound_fixed_tuple_length(
             annotation=next(iter(annotation.args), None),
             resolver=resolver,
         )
+    if fullname in _UNION_FULLNAMES:
+        return _union_fixed_tuple_length(
+            items=list(annotation.args),
+            resolver=resolver,
+        )
     if fullname in _TUPLE_FULLNAMES:
         return _literal_tuple_annotation_length(
             annotation=annotation,
@@ -1985,6 +2147,21 @@ def _unbound_fixed_tuple_length(
     return None
 
 
+def _is_uninhabited(
+    *,
+    annotation: Type,
+    resolver: "_AnnotationResolver",
+) -> bool:
+    """Return whether an annotation has no values.
+
+    An annotation reaches here either as written or already analyzed,
+    depending on where it came from.
+    """
+    if isinstance(annotation, UnboundType):
+        return resolver.fullname(annotation.name) in _NEVER_FULLNAMES
+    return isinstance(get_proper_type(typ=annotation), UninhabitedType)
+
+
 def _union_fixed_tuple_length(
     *,
     items: list[Type],
@@ -1993,10 +2170,7 @@ def _union_fixed_tuple_length(
     """Return the length shared by every inhabited union item."""
     lengths: set[int] = set()
     for item in items:
-        if (
-            isinstance(item, UnboundType)
-            and resolver.fullname(item.name) in _NEVER_FULLNAMES
-        ):
+        if _is_uninhabited(annotation=item, resolver=resolver):
             continue
         length = _fixed_tuple_annotation_length(
             annotation=item,
@@ -2048,7 +2222,11 @@ def _collect_call_exprs_from_comprehension(
     # comprehension's targets do not shadow anything within it.
     _collect_call_exprs(sequences[0], calls)
     first_call_index = len(calls)
-    calls.push_scope(is_comprehension=True, annotations={})
+    calls.push_scope(
+        is_comprehension=True,
+        annotations={},
+        parameters=set(),
+    )
     for position, (index, sequence, conditions) in enumerate(
         iterable=zip(indices, sequences, condlists, strict=True)
     ):
@@ -2117,8 +2295,12 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         case RevealExpr(kind=kind, expr=expr):  # pragma: no cover
             if kind == REVEAL_TYPE and expr is not None:
                 _collect_call_exprs(expr, calls)
-        case AssignmentExpr(target=target, value=value):
-            calls.bind_in_function_scope(_binding_target_names(target))
+        case AssignmentExpr(target=NameExpr() as target, value=value):
+            _bind_assignment_expression(
+                target=target,
+                value=value,
+                calls=calls,
+            )
             _collect_call_exprs(target, calls)
             _collect_call_exprs(value, calls)
         case UnaryExpr(expr=expr):

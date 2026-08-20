@@ -1,0 +1,2 @@
+Stop an assignment through ``nonlocal`` in a nested function from
+discarding what is known about a module-level name.
