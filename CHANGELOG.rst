@@ -3,6 +3,27 @@ Changelog
 
 .. towncrier release notes start
 
+2026.08.20
+----------
+
+- Follow an assignment through ``nonlocal`` to the nearest enclosing scope which
+  binds that name, instead of to every enclosing scope.
+
+- Recognize a ``Union[...]`` annotation and a type alias to a union when
+  finding the length of a fixed tuple.
+
+- Stop reporting positional arguments for ``super()`` calls whose written
+  starting type cannot be resolved, such as a class alias imported from
+  another module.
+
+- Follow the length of a sequence bound by an assignment expression, and by
+  an assignment which follows a ``global`` declaration, and stop a
+  ``global`` declaration from letting an enclosing scope's length show
+  through.
+
+- Stop an assignment through ``nonlocal`` in a nested function from
+  discarding what is known about a module-level name.
+
 2026.08.19
 ----------
 

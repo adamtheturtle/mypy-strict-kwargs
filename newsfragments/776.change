@@ -1,3 +1,0 @@
-Stop reporting positional arguments for ``super()`` calls whose written
-starting type cannot be resolved, such as a class alias imported from
-another module.

@@ -1,2 +1,0 @@
-Follow an assignment through ``nonlocal`` to the nearest enclosing scope which
-binds that name, instead of to every enclosing scope.
