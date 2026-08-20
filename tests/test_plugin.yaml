@@ -2826,3 +2826,58 @@
   out: |-
     main:15: error: Too many positional arguments for "method" of "Base"  [call-arg]
     main:18: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+# mypy has its own plugin hooks for these names.  The plugin offers a
+# hook for every name, and mypy consults only the first plugin which
+# offers one, so its hooks run here before the transformation.
+- case: mypy_own_signature_hooks_still_run
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    import dataclasses
+    from functools import singledispatch
+    from typing import TypedDict
+
+
+    class Options(TypedDict, total=False):
+        timeout: int
+
+
+    @dataclasses.dataclass
+    class Point:
+        x: int
+        y: int
+
+
+    @singledispatch
+    def describe(value: object) -> str:
+        return "object"
+
+
+    @describe.register
+    def _(value: int) -> str:
+        return "int"
+
+
+    def use_typed_dict(options: Options) -> None:
+        reveal_type(options.get("timeout"))
+        reveal_type(options.setdefault("timeout", 5))
+        reveal_type(options.pop("timeout"))
+
+
+    def use_replace(point: Point) -> None:
+        reveal_type(dataclasses.replace(point, x=1))
+        dataclasses.replace(point, nonexistent=1)
+
+
+    def use_singledispatch() -> None:
+        describe(1)
+  out: |-
+    main:27: note: Revealed type is "int | None"
+    main:28: error: Too many positional arguments for "setdefault" of "TypedDict"  [call-arg]
+    main:28: note: Revealed type is "int"
+    main:29: error: Too many positional arguments for "pop" of "TypedDict"  [call-arg]
+    main:29: note: Revealed type is "int"
+    main:33: note: Revealed type is "main.Point"
+    main:34: error: Unexpected keyword argument "nonexistent" for "replace" of "Point"  [call-arg]
