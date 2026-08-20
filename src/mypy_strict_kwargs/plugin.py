@@ -684,8 +684,8 @@ def _transform_function_signature(
 ) -> FunctionLike:
     """Transform a function signature, after ``mypy``'s own plugin."""
     return _transform_signature(
-        ctx,
-        fullname,
+        ctx=ctx,
+        fullname=fullname,
         ignore_names=ignore_names,
         debug=debug,
         default_signature=(
@@ -706,8 +706,8 @@ def _transform_method_signature(
 ) -> FunctionLike:
     """Transform a method signature, after ``mypy``'s own plugin."""
     return _transform_signature(
-        ctx,
-        fullname,
+        ctx=ctx,
+        fullname=fullname,
         ignore_names=ignore_names,
         debug=debug,
         default_signature=(
@@ -3015,7 +3015,7 @@ class KeywordOnlyPlugin(Plugin):
             ignore_names=self._ignore_names,
             debug=self._debug,
             default_hook=self._default_plugin.get_function_signature_hook(
-                fullname
+                fullname=fullname
             ),
         )
 
@@ -3030,7 +3030,7 @@ class KeywordOnlyPlugin(Plugin):
             ignore_names=self._ignore_names,
             debug=self._debug,
             default_hook=self._default_plugin.get_method_signature_hook(
-                fullname
+                fullname=fullname
             ),
         )
 
