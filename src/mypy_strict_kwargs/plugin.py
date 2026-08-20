@@ -604,18 +604,18 @@ _MethodHook = Callable[[MethodContext], Type]
 def _signature_is_overload_item(*, signature: CallableType) -> bool:
     """Return whether this callable is one item of an overload."""
     definition = signature.definition
-    return definition is not None and bool(
-        getattr(definition, "is_overload", False)
-    )
+    if isinstance(definition, (Decorator, FuncDef)):
+        return definition.is_overload
+    return False
 
 
-def _is_overloaded_name(*, plugin: Plugin, fullname: str) -> bool:
+def _is_overloaded_name(*, mypy_plugin: Plugin, fullname: str) -> bool:
     """Return whether ``fullname`` refers to an overloaded callable.
 
     Constructors such as ``builtins.str`` are ``TypeInfo`` nodes whose
     ``__new__`` or ``__init__`` is overloaded.
     """
-    symbol = plugin.lookup_fully_qualified(fullname=fullname)
+    symbol = mypy_plugin.lookup_fully_qualified(fullname=fullname)
     if symbol is None or symbol.node is None:
         return False
     node = symbol.node
@@ -649,16 +649,16 @@ def _check_overload_call_positional_arguments(
     ignore_names: list[str],
     is_method: bool,
 ) -> None:
-    """Report positional arguments for an untransformed overloaded
-    call.
+    """Report positional arguments for an overloaded call left alone by
+    the signature hook.
 
     Overloaded signatures are left alone so ``mypy`` can pick a variant;
     this reports the keyword-only requirement once against the call that
     was selected.
 
-    Positionals aimed at positional-only parameters, or at ``self`` /
-    ``cls``, are allowed: those stay positional after a signature
-    transform too.
+    Positional arguments aimed at positional-only parameters, or at
+    ``self`` / ``cls``, are allowed: those stay positional after a
+    signature transform too.
     """
     if fullname in ignore_names:
         return
@@ -3181,7 +3181,7 @@ class KeywordOnlyPlugin(Plugin):
 
     def get_function_hook(self, fullname: str) -> _FunctionHook | None:
         """Report positional calls to overloaded functions clearly."""
-        if not _is_overloaded_name(plugin=self, fullname=fullname):
+        if not _is_overloaded_name(mypy_plugin=self, fullname=fullname):
             return None
         return partial(
             _check_overload_function_call,
@@ -3194,7 +3194,7 @@ class KeywordOnlyPlugin(Plugin):
 
     def get_method_hook(self, fullname: str) -> _MethodHook | None:
         """Report positional calls to overloaded methods clearly."""
-        if not _is_overloaded_name(plugin=self, fullname=fullname):
+        if not _is_overloaded_name(mypy_plugin=self, fullname=fullname):
             return None
         return partial(
             _check_overload_method_call,
