@@ -107,7 +107,6 @@ from mypy.types import (
     EllipsisType,
     FunctionLike,
     Instance,
-    Overloaded,
     TupleType,
     Type,
     TypeVarTupleType,
@@ -622,13 +621,6 @@ _FunctionSigHook = Callable[[FunctionSigContext], FunctionLike]
 _MethodSigHook = Callable[[MethodSigContext], FunctionLike]
 
 
-def _callable_items(*, signature: FunctionLike) -> list[CallableType]:
-    """Return the callables a signature is made of."""
-    if isinstance(signature, CallableType):
-        return [signature]
-    return signature.items
-
-
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
@@ -636,12 +628,15 @@ def _transform_signature(
     ignore_names: list[str],
     debug: bool,
     default_signature: FunctionLike,
-) -> FunctionLike:
+) -> CallableType:
     """Transform positional arguments to keyword-only arguments.
 
     ``default_signature`` is the signature to transform, which is what
     ``mypy``'s own plugin makes of the call when it has something to say
     about this name.
+
+    ``mypy`` applies signature hooks to each overload item separately, so
+    this always receives a ``CallableType``.
     """
     if debug:
         _write_debug_fullname(fullname=fullname, path=ctx.api.path)
@@ -653,25 +648,16 @@ def _transform_signature(
             ignore_names=ignore_names,
         )
 
-    preserved_positional_argument_count = _preserved_positional_argument_count(
-        ctx=ctx,
+    assert isinstance(default_signature, CallableType)  # noqa: S101
+    return _transform_callable_type(
+        signature=default_signature,
         fullname=fullname,
+        ignore_names=ignore_names,
+        skip_bound_argument=False,
+        preserved_positional_argument_count=(
+            _preserved_positional_argument_count(ctx=ctx, fullname=fullname)
+        ),
     )
-    transformed = [
-        _transform_callable_type(
-            signature=item,
-            fullname=fullname,
-            ignore_names=ignore_names,
-            skip_bound_argument=False,
-            preserved_positional_argument_count=(
-                preserved_positional_argument_count
-            ),
-        )
-        for item in _callable_items(signature=default_signature)
-    ]
-    if isinstance(default_signature, CallableType):
-        return transformed[0]
-    return Overloaded(items=transformed)
 
 
 def _transform_function_signature(
@@ -681,7 +667,7 @@ def _transform_function_signature(
     ignore_names: list[str],
     debug: bool,
     default_hook: _FunctionSigHook | None,
-) -> FunctionLike:
+) -> CallableType:
     """Transform a function signature, after ``mypy``'s own plugin."""
     return _transform_signature(
         ctx=ctx,
@@ -703,7 +689,7 @@ def _transform_method_signature(
     ignore_names: list[str],
     debug: bool,
     default_hook: _MethodSigHook | None,
-) -> FunctionLike:
+) -> CallableType:
     """Transform a method signature, after ``mypy``'s own plugin."""
     return _transform_signature(
         ctx=ctx,
