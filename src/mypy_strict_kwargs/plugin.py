@@ -101,6 +101,7 @@ from mypy.plugin import (
     ReportConfigContext,
     SemanticAnalyzerPluginInterface,
 )
+from mypy.plugins.default import DefaultPlugin
 from mypy.types import (
     CallableType,
     EllipsisType,
@@ -616,14 +617,27 @@ def _check_partial_arguments(
         )
 
 
+_FunctionSigHook = Callable[[FunctionSigContext], FunctionLike]
+_MethodSigHook = Callable[[MethodSigContext], FunctionLike]
+
+
 def _transform_signature(
     ctx: FunctionSigContext | MethodSigContext,
     fullname: str,
     *,
     ignore_names: list[str],
     debug: bool,
+    default_signature: FunctionLike,
 ) -> CallableType:
-    """Transform positional arguments to keyword-only arguments."""
+    """Transform positional arguments to keyword-only arguments.
+
+    ``default_signature`` is the signature to transform, which is what
+    ``mypy``'s own plugin makes of the call when it has something to say
+    about this name.
+
+    ``mypy`` applies signature hooks to each overload item separately, so
+    this always receives a ``CallableType``.
+    """
     if debug:
         _write_debug_fullname(fullname=fullname, path=ctx.api.path)
 
@@ -634,13 +648,58 @@ def _transform_signature(
             ignore_names=ignore_names,
         )
 
+    assert isinstance(default_signature, CallableType)  # noqa: S101
     return _transform_callable_type(
-        signature=ctx.default_signature,
+        signature=default_signature,
         fullname=fullname,
         ignore_names=ignore_names,
         skip_bound_argument=False,
         preserved_positional_argument_count=(
             _preserved_positional_argument_count(ctx=ctx, fullname=fullname)
+        ),
+    )
+
+
+def _transform_function_signature(
+    ctx: FunctionSigContext,
+    fullname: str,
+    *,
+    ignore_names: list[str],
+    debug: bool,
+    default_hook: _FunctionSigHook | None,
+) -> CallableType:
+    """Transform a function signature, after ``mypy``'s own plugin."""
+    return _transform_signature(
+        ctx=ctx,
+        fullname=fullname,
+        ignore_names=ignore_names,
+        debug=debug,
+        default_signature=(
+            ctx.default_signature
+            if default_hook is None
+            else default_hook(ctx)
+        ),
+    )
+
+
+def _transform_method_signature(
+    ctx: MethodSigContext,
+    fullname: str,
+    *,
+    ignore_names: list[str],
+    debug: bool,
+    default_hook: _MethodSigHook | None,
+) -> CallableType:
+    """Transform a method signature, after ``mypy``'s own plugin."""
+    return _transform_signature(
+        ctx=ctx,
+        fullname=fullname,
+        ignore_names=ignore_names,
+        debug=debug,
+        default_signature=(
+            ctx.default_signature
+            if default_hook is None
+            else default_hook(ctx)
         ),
     )
 
@@ -2910,6 +2969,11 @@ class KeywordOnlyPlugin(Plugin):
         This is not friendly to errors yet.
         """
         super().__init__(options=options)
+        # ``mypy`` consults the first plugin which offers a hook for a
+        # name, and this plugin offers one for every name, so its own
+        # plugin would never be asked.  Its hooks run first here, and
+        # what they make of the call is what gets transformed.
+        self._default_plugin = DefaultPlugin(options=options)
         self._pending_super_calls: _PendingSuperCalls = {}
         self._module_lengths: dict[str, dict[str, int]] = {}
         configuration = _plugin_configuration(
@@ -2929,25 +2993,31 @@ class KeywordOnlyPlugin(Plugin):
     def get_function_signature_hook(
         self,
         fullname: str,
-    ) -> Callable[[FunctionSigContext], CallableType] | None:
+    ) -> _FunctionSigHook | None:
         """Transform positional arguments to keyword-only arguments."""
         return partial(
-            _transform_signature,
+            _transform_function_signature,
             fullname=fullname,
             ignore_names=self._ignore_names,
             debug=self._debug,
+            default_hook=self._default_plugin.get_function_signature_hook(
+                fullname=fullname
+            ),
         )
 
     def get_method_signature_hook(
         self,
         fullname: str,
-    ) -> Callable[[MethodSigContext], CallableType] | None:
+    ) -> _MethodSigHook | None:
         """Transform positional arguments to keyword-only arguments."""
         return partial(
-            _transform_signature,
+            _transform_method_signature,
             fullname=fullname,
             ignore_names=self._ignore_names,
             debug=self._debug,
+            default_hook=self._default_plugin.get_method_signature_hook(
+                fullname=fullname
+            ),
         )
 
     def get_base_class_hook(
