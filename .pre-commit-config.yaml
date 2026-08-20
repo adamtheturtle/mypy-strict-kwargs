@@ -365,6 +365,10 @@ repos:
         entry: uv run --extra=dev yamlfix
         language: python
         types_or: [yaml]
+        # The plugin test cases embed Python source and assert errors by
+        # line number.  Reformatting shifts those lines, and the failure
+        # which follows looks exactly like a change in behaviour.
+        exclude: ^tests/test_plugin\.yaml$
         additional_dependencies:
           - *uv_version
 

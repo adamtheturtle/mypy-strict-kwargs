@@ -1,0 +1,95 @@
+---
+name: Corpus
+
+# Type check real projects with the plugin enabled, to find crashes which
+# the test suite cannot: it reaches every line, but only the shapes of
+# code someone thought to write a case for.
+#
+# Errors are expected and are not a failure.  Real code passes arguments
+# positionally, which is the whole point of the plugin.  Only an internal
+# error is a failure.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # * is a special character in YAML so you have to quote this string
+    # Run at 2:00 every Monday
+    - cron: 0 2 * * 1
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repository: pallets/flask
+            # Pinned so that this job cannot start failing because
+            # somebody else's code changed.
+            ref: d318b683471101618febed18996405ad26462110
+            package: corpus/src/flask
+          - repository: encode/httpx
+            ref: b5addb64f0161ff6bfe94c124ef76f6a1fba5254
+            package: corpus/httpx
+          - repository: psf/requests
+            ref: 8f8b212de8c2129d7954c6cd373762880375620a
+            package: corpus/src/requests
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.ref }}
+          path: corpus
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: '**/pyproject.toml'
+
+      - name: Write a configuration file which enables the plugin
+        run: |
+          cat > corpus-mypy.ini << 'EOF'
+          [mypy]
+          plugins = mypy_strict_kwargs
+          ignore_missing_imports = True
+          follow_imports = skip
+          EOF
+
+      - name: Type check
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          uv run --extra=dev mypy \
+              --no-incremental \
+              --cache-dir=/dev/null \
+              --config-file=corpus-mypy.ini \
+              "$PACKAGE" | tee mypy-output.txt || true
+
+      - name: Fail on an internal error
+        run: |
+          if grep --quiet 'INTERNAL ERROR' mypy-output.txt; then
+              echo 'The plugin crashed on this project.'
+              exit 1
+          fi
+
+  completion-corpus:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()  # Run even if one matrix job fails
+    steps:
+      - name: Check matrix job status
+        run: |-
+          if ! ${{ needs.build.result == 'success' }}; then
+            echo "One or more matrix jobs failed"
+            exit 1
+          fi
