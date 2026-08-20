@@ -2881,3 +2881,75 @@
     main:29: note: Revealed type is "int"
     main:33: note: Revealed type is "main.Point"
     main:34: error: Unexpected keyword argument "nonexistent" for "replace" of "Point"  [call-arg]
+
+# Overloaded callables are not signature-transformed (mypy matches
+# variants against each item), so positional misuse is reported from the
+# function/method hook instead of as a generic call-overload error.
+- case: overloaded_call_reports_call_arg
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import overload
+
+
+    @overload
+    def f(x: int) -> int: ...
+
+
+    @overload
+    def f(x: str) -> str: ...
+
+
+    def f(x: int | str) -> int | str:
+        return x
+
+
+    class C:
+        @overload
+        def method(self, x: int) -> int: ...
+
+        @overload
+        def method(self, x: str) -> str: ...
+
+        def method(self, x: int | str) -> int | str:
+            return x
+
+
+    def use(c: C) -> None:
+        str(1)
+        f(1)
+        c.method(1)
+        str(object=1)
+        f(x=1)
+        c.method(x=1)
+  out: |-
+    main:28: error: Too many positional arguments for "str"  [call-arg]
+    main:29: error: Too many positional arguments for "f"  [call-arg]
+    main:30: error: Too many positional arguments for "method" of "C"  [call-arg]
+
+# A star-argument of unknown length is not guessed at for overloaded
+# callees, matching the conservative ``super()`` checks.
+- case: overloaded_call_star_argument_is_not_guessed
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import overload
+
+
+    @overload
+    def f(x: int) -> int: ...
+
+
+    @overload
+    def f(x: str) -> str: ...
+
+
+    def f(x: int | str) -> int | str:
+        return x
+
+
+    def use(values: tuple[int, ...]) -> None:
+        f(*values)
+  out: ""
