@@ -1,0 +1,2 @@
+Stop reporting a positional argument which lands in a ``*args``
+parameter of an overloaded callable, such as ``print("hello")``.
