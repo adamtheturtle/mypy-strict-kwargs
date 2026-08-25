@@ -610,25 +610,55 @@ def _signature_is_overload_item(*, signature: CallableType) -> bool:
     return False
 
 
-def _is_overloaded_name(*, mypy_plugin: Plugin, fullname: str) -> bool:
-    """Return whether ``fullname`` refers to an overloaded callable.
+def _overload_definitions(
+    *,
+    mypy_plugin: Plugin,
+    fullname: str,
+) -> list[OverloadedFuncDef]:
+    """Return the overloaded definitions ``fullname`` refers to.
 
-    Constructors such as ``builtins.str`` are ``TypeInfo`` nodes whose
-    ``__new__`` or ``__init__`` is overloaded.
+    Empty when ``fullname`` is not an overloaded callable.  Constructors
+    such as ``builtins.str`` are ``TypeInfo`` nodes whose ``__new__`` or
+    ``__init__`` is overloaded.
     """
     symbol = mypy_plugin.lookup_fully_qualified(fullname=fullname)
     if symbol is None or symbol.node is None:
-        return False
+        return []
     node = symbol.node
     if isinstance(node, OverloadedFuncDef):
-        return True
+        return [node]
     if not isinstance(node, TypeInfo):
-        return False
+        return []
+    definitions: list[OverloadedFuncDef] = []
     for attribute_name in ("__new__", "__init__"):
         member = node.names.get(attribute_name)
         if member is not None and isinstance(member.node, OverloadedFuncDef):
-            return True
-    return False
+            definitions.append(member.node)
+    return definitions
+
+
+def _star_formal_names(
+    *,
+    overloads: list[OverloadedFuncDef],
+) -> frozenset[str]:
+    """Return formal names declared as ``*args`` or ``**kwargs``.
+
+    An argument which lands in a star parameter has no keyword form, so
+    passing it by position is the only thing a caller can do.
+    """
+    names: set[str] = set()
+    star_kinds = {ArgKind.ARG_STAR, ArgKind.ARG_STAR2}
+    for overload in overloads:
+        for item in overload.items:
+            function = item.func if isinstance(item, Decorator) else item
+            for name, kind in zip(
+                function.arg_names,
+                function.arg_kinds,
+                strict=True,
+            ):
+                if name is not None and kind in star_kinds:
+                    names.add(name)
+    return frozenset(names)
 
 
 def _callable_description_from_fullname(
@@ -672,6 +702,7 @@ def _check_overload_call_positional_arguments(
     ctx: FunctionContext | MethodContext,
     fullname: str,
     ignore_names: list[str],
+    star_formal_names: frozenset[str],
     is_method: bool,
 ) -> None:
     """Report positional arguments for an overloaded call left alone by
@@ -708,6 +739,10 @@ def _check_overload_call_positional_arguments(
         strict=True,
     ):
         if formal_name is None or formal_name in {"self", "cls"}:
+            continue
+        # An argument which lands in ``*args`` cannot be passed by
+        # keyword, so it stays positional after a signature transform.
+        if formal_name in star_formal_names:
             continue
         for kind in formal_kinds:
             if kind == ArgKind.ARG_POS:
@@ -758,6 +793,7 @@ def _check_overload_function_call(
     fullname: str,
     *,
     ignore_names: list[str],
+    star_formal_names: frozenset[str],
     default_hook: _FunctionHook | None,
 ) -> Type:
     """Check positional arguments for an overloaded function call."""
@@ -768,6 +804,7 @@ def _check_overload_function_call(
         ctx=ctx,
         fullname=fullname,
         ignore_names=ignore_names,
+        star_formal_names=star_formal_names,
         is_method=False,
     )
     return return_type
@@ -778,6 +815,7 @@ def _check_overload_method_call(
     fullname: str,
     *,
     ignore_names: list[str],
+    star_formal_names: frozenset[str],
     default_hook: _MethodHook | None,
 ) -> Type:
     """Check positional arguments for an overloaded method call."""
@@ -788,6 +826,7 @@ def _check_overload_method_call(
         ctx=ctx,
         fullname=fullname,
         ignore_names=ignore_names,
+        star_formal_names=star_formal_names,
         is_method=True,
     )
     return return_type
@@ -3216,12 +3255,17 @@ class KeywordOnlyPlugin(Plugin):
 
     def get_function_hook(self, fullname: str) -> _FunctionHook | None:
         """Report positional calls to overloaded functions clearly."""
-        if not _is_overloaded_name(mypy_plugin=self, fullname=fullname):
+        overloads = _overload_definitions(
+            mypy_plugin=self,
+            fullname=fullname,
+        )
+        if not overloads:
             return None
         return partial(
             _check_overload_function_call,
             fullname=fullname,
             ignore_names=self._ignore_names,
+            star_formal_names=_star_formal_names(overloads=overloads),
             default_hook=self._default_plugin.get_function_hook(
                 fullname=fullname
             ),
@@ -3229,12 +3273,17 @@ class KeywordOnlyPlugin(Plugin):
 
     def get_method_hook(self, fullname: str) -> _MethodHook | None:
         """Report positional calls to overloaded methods clearly."""
-        if not _is_overloaded_name(mypy_plugin=self, fullname=fullname):
+        overloads = _overload_definitions(
+            mypy_plugin=self,
+            fullname=fullname,
+        )
+        if not overloads:
             return None
         return partial(
             _check_overload_method_call,
             fullname=fullname,
             ignore_names=self._ignore_names,
+            star_formal_names=_star_formal_names(overloads=overloads),
             default_hook=self._default_plugin.get_method_hook(
                 fullname=fullname
             ),

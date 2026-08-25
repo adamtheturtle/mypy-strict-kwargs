@@ -3032,3 +3032,34 @@
         deco(function)
   out: |-
     main:37: error: Too many positional arguments for "deco"  [call-arg]
+
+# An argument which lands in ``*args`` has no keyword form, so it is not
+# reported for an overloaded callee either.  A normal parameter of the
+# same callee still is.
+- case: overloaded_call_star_parameter_is_not_reported
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import overload
+
+
+    @overload
+    def collect(*values: int, flag: bool = False) -> int: ...
+
+
+    @overload
+    def collect(*values: str, flag: bool = False) -> str: ...
+
+
+    def collect(*values: object, flag: bool = False) -> object:
+        return values
+
+
+    def use() -> None:
+        print("one")
+        print("one", "two")
+        collect(1, 2)
+        str(1)
+  out: |-
+    main:20: error: Too many positional arguments for "str"  [call-arg]
