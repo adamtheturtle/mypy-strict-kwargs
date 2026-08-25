@@ -2953,3 +2953,82 @@
     def use(values: tuple[int, ...]) -> None:
         f(*values)
   out: ""
+
+# This plugin offers an attribute hook for every name, so it has to call
+# ``mypy``'s own attribute hooks itself or their refinements are lost.
+- case: mypy_own_attribute_hooks_still_run
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    import enum
+
+
+    class Color(enum.Enum):
+        RED = "red"
+        BLUE = "blue"
+
+
+    class Outer:
+        class Inner(enum.Enum):
+            A = 1
+
+        def use(self) -> None:
+            reveal_type(Outer.Inner.A.value)
+
+
+    def use(color: Color) -> None:
+        reveal_type(Color.RED.value)
+        reveal_type(color.value)
+  out: |-
+    main:14: note: Revealed type is "Literal[1]?"
+    main:18: note: Revealed type is "Literal['red']?"
+    main:19: note: Revealed type is "Literal['red']? | Literal['blue']?"
+
+# A decorator is applied by position, so an overloaded decorator is left
+# alone just as a non-overloaded one is.  Calling the same decorator with
+# a positional argument by hand is still reported.
+- case: overloaded_decorator_application_is_not_reported
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from collections.abc import Callable
+    from typing import TypeVar, overload
+
+    T = TypeVar("T")
+
+
+    @overload
+    def deco(obj: T) -> T: ...
+
+
+    @overload
+    def deco(*, flag: bool) -> Callable[[T], T]: ...
+
+
+    def deco(obj: object = None, *, flag: bool = False) -> object:
+        return obj
+
+
+    @deco
+    def function() -> None: ...
+
+
+    @deco
+    class Klass: ...
+
+
+    @deco(flag=True)
+    def configured() -> None: ...
+
+
+    class Holder:
+        @deco
+        def method(self) -> None: ...
+
+
+    def use() -> None:
+        deco(function)
+  out: |-
+    main:37: error: Too many positional arguments for "deco"  [call-arg]
