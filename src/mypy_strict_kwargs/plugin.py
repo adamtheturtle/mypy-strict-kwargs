@@ -599,6 +599,7 @@ _FunctionSigHook = Callable[[FunctionSigContext], FunctionLike]
 _MethodSigHook = Callable[[MethodSigContext], FunctionLike]
 _FunctionHook = Callable[[FunctionContext], Type]
 _MethodHook = Callable[[MethodContext], Type]
+_AttributeHook = Callable[[AttributeContext], Type]
 
 
 def _signature_is_overload_item(*, signature: CallableType) -> bool:
@@ -642,6 +643,30 @@ def _callable_description_from_fullname(
     return f'"{parts[-1]}"'
 
 
+def _overload_call_is_left_alone(
+    *,
+    ctx: FunctionContext | MethodContext,
+    fullname: str,
+    ignore_names: list[str],
+) -> bool:
+    """Return whether an overloaded call is not checked at all."""
+    if fullname in ignore_names:
+        return True
+
+    # A decorator is applied by position: ``@deco`` has no syntax for
+    # passing the decorated object by keyword.
+    # ``mypy`` reports such an application against the decorated
+    # function (a ``Decorator``) or class (a ``ClassDef``) rather than
+    # against a call expression, and it applies no signature hook to it,
+    # so a non-overloaded decorator is left alone as well.
+    if isinstance(ctx.context, Decorator | ClassDef):
+        return True
+
+    # ``partial`` / ``partialmethod`` report against the wrapped callable
+    # from the signature hook instead.
+    return fullname in _PARTIAL_FULLNAMES
+
+
 def _check_overload_call_positional_arguments(
     *,
     ctx: FunctionContext | MethodContext,
@@ -660,12 +685,11 @@ def _check_overload_call_positional_arguments(
     ``self`` / ``cls``, are allowed: those stay positional after a
     signature transform too.
     """
-    if fullname in ignore_names:
-        return
-
-    # ``partial`` / ``partialmethod`` report against the wrapped callable
-    # from the signature hook instead.
-    if fullname in _PARTIAL_FULLNAMES:
+    if _overload_call_is_left_alone(
+        ctx=ctx,
+        fullname=fullname,
+        ignore_names=ignore_names,
+    ):
         return
 
     preserved_positional_argument_count = 0
@@ -2767,25 +2791,36 @@ def _check_pending_super_call(
     ignore_names: list[str],
     pending_super_calls: _PendingSuperCalls,
     debug: bool,
+    default_hook: _AttributeHook | None,
 ) -> Type:
-    """Check a ``super()`` call to a member which is not a method."""
+    """Check a ``super()`` call to a member which is not a method.
+
+    ``default_hook`` is what ``mypy``'s own plugin makes of the
+    attribute when it has something to say about this name, such as the
+    value type behind ``SomeEnum.value``.  This plugin offers an
+    attribute hook for every name, so that hook has to be called from
+    here or its refinement is lost.
+    """
+    attribute_type_from_hooks = (
+        ctx.default_attr_type if default_hook is None else default_hook(ctx)
+    )
     context = ctx.context
     if not isinstance(context, SuperExpr):
-        return ctx.default_attr_type
+        return attribute_type_from_hooks
 
     pending = pending_super_calls.get(
         (ctx.api.path, context.line, context.column)
     )
     if pending is None:
-        return ctx.default_attr_type
+        return attribute_type_from_hooks
 
     if debug:
         _write_debug_fullname(fullname=fullname, path=ctx.api.path)
 
     if fullname in ignore_names:
-        return ctx.default_attr_type
+        return attribute_type_from_hooks
 
-    attribute_type = get_proper_type(typ=ctx.default_attr_type)
+    attribute_type = get_proper_type(typ=attribute_type_from_hooks)
     signature: FunctionLike | None = None
     skip_bound_argument = False
     if isinstance(attribute_type, FunctionLike):
@@ -2809,7 +2844,7 @@ def _check_pending_super_call(
             pending.call,
             code=CALL_ARG,
         )
-    return ctx.default_attr_type
+    return attribute_type_from_hooks
 
 
 def _check_super_method_call(
@@ -3229,7 +3264,7 @@ class KeywordOnlyPlugin(Plugin):
     def get_attribute_hook(
         self,
         fullname: str,
-    ) -> Callable[[AttributeContext], Type] | None:
+    ) -> _AttributeHook | None:
         """Check ``super()`` calls to members which are not methods.
 
         The type of such a member is only known once type checking
@@ -3241,6 +3276,9 @@ class KeywordOnlyPlugin(Plugin):
             ignore_names=self._ignore_names,
             pending_super_calls=self._pending_super_calls,
             debug=self._debug,
+            default_hook=self._default_plugin.get_attribute_hook(
+                fullname=fullname
+            ),
         )
 
 

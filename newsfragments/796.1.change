@@ -1,0 +1,2 @@
+Stop reporting a decorator applied to an overloaded callable, which is
+applied by position and has no keyword form.
