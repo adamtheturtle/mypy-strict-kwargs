@@ -3,6 +3,15 @@ Changelog
 
 .. towncrier release notes start
 
+2026.08.25
+----------
+
+- Stop reporting a decorator applied to an overloaded callable, which is
+  applied by position and has no keyword form.
+
+- Call mypy's own attribute hooks instead of shadowing them, so that the
+  value type behind ``SomeEnum.value`` is no longer lost.
+
 2026.08.20.1
 ------------
 

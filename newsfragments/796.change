@@ -1,2 +1,0 @@
-Call mypy's own attribute hooks instead of shadowing them, so that the
-value type behind ``SomeEnum.value`` is no longer lost.
