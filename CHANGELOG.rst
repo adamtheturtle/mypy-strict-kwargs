@@ -6,7 +6,7 @@ Changelog
 2026.08.25.1
 ------------
 
-- Stop reporting a positional argument which lands in a ``*args``
+- Stop reporting a positional argument collected by a ``*args``
   parameter of an overloaded callable, such as ``print("hello")``.
 
 2026.08.25
