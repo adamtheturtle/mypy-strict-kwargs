@@ -25,12 +25,12 @@ With this plugin, ``mypy`` will only accept the form where keyword arguments are
 Why?
 ----
 
-* In the same spirit as a formatter - think ``black`` or ``ruff format`` - this lets you stop spending time discussing whether a particular function call should use keyword arguments.
+* In the same spirit as a formatter - think ``black`` or ``ruff format`` - this lets you stop spending time discussing whether a function call should use keyword arguments.
 * Sometimes positional arguments are best at first, and then more and more are added and code becomes unclear, without anyone stopping to refactor to keyword arguments.
 * The type checker gives better errors when keyword arguments are used.
   For example, with positional arguments, you may see, ``Argument 5 to "add" has incompatible type "str"; expected "int"``.
   This requires that you count the arguments to see which one is wrong.
-  With named arguments, you get ``Argument "e" to "add" has incompatible type "str"; expected "int"``.
+  With keyword arguments, you get ``Argument "e" to "add" has incompatible type "str"; expected "int"``.
 
 Installation
 ------------
