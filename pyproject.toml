@@ -65,7 +65,7 @@ optional-dependencies.dev = [
     "sphinx-lint==1.0.2",
     "strict-kwargs==2026.8.28.post2",
     "towncrier==25.8.0",
-    "ty==0.0.76",
+    "ty==0.0.77",
     "vale==3.19.0.0",
     "vulture==2.16",
     "yamlfix==1.19.1",
