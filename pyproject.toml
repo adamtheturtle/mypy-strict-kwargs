@@ -64,14 +64,14 @@ optional-dependencies.dev = [
     "shfmt-py==4.1.0",
     "sphinx-lint==1.0.2",
     "strict-kwargs==2026.8.28.post2",
-    "towncrier==25.8.0",
+    "towncrier==26.9.0",
     "ty==0.0.77",
     "vale==3.19.0.0",
     "vulture==2.16",
     "yamlfix==1.19.1",
     "zizmor==1.30.0",
 ]
-optional-dependencies.release = [ "check-wheel-contents==0.6.3", "towncrier==25.8.0" ]
+optional-dependencies.release = [ "check-wheel-contents==0.6.3", "towncrier==26.9.0" ]
 urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
 urls.Source = "https://github.com/adamtheturtle/mypy-strict-kwargs"
 entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plugin"
