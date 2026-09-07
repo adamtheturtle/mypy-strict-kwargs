@@ -118,6 +118,7 @@ from mypy.types import (
     UnpackType,
     get_proper_type,
 )
+from typing_extensions import override
 
 _CallExprContainer = Expression | Statement
 
@@ -559,7 +560,7 @@ def _check_partial_arguments(
     """Report parameters which ``partial`` binds by position."""
     # Pad so that a signature with fewer formal arguments than expected
     # cannot raise.
-    argument_groups = [*ctx.args, [], []]
+    argument_groups: list[list[Expression]] = [*ctx.args, [], []]
     wrapped_arguments, bound_arguments = argument_groups[0], argument_groups[1]
     if not wrapped_arguments or not bound_arguments:
         return
@@ -3215,6 +3216,7 @@ class KeywordOnlyPlugin(Plugin):
         self._ignore_names = configuration.ignore_names
         self._debug = configuration.debug
 
+    @override
     def report_config_data(self, ctx: ReportConfigContext) -> object:
         """Return plugin configuration that affects cached modules."""
         del ctx
@@ -3223,6 +3225,7 @@ class KeywordOnlyPlugin(Plugin):
             "ignore_names": self._ignore_names,
         }
 
+    @override
     def get_function_signature_hook(
         self,
         fullname: str,
@@ -3238,6 +3241,7 @@ class KeywordOnlyPlugin(Plugin):
             ),
         )
 
+    @override
     def get_method_signature_hook(
         self,
         fullname: str,
@@ -3253,6 +3257,7 @@ class KeywordOnlyPlugin(Plugin):
             ),
         )
 
+    @override
     def get_function_hook(self, fullname: str) -> _FunctionHook | None:
         """Report positional calls to overloaded functions clearly."""
         overloads = _overload_definitions(
@@ -3271,6 +3276,7 @@ class KeywordOnlyPlugin(Plugin):
             ),
         )
 
+    @override
     def get_method_hook(self, fullname: str) -> _MethodHook | None:
         """Report positional calls to overloaded methods clearly."""
         overloads = _overload_definitions(
@@ -3289,6 +3295,7 @@ class KeywordOnlyPlugin(Plugin):
             ),
         )
 
+    @override
     def get_base_class_hook(
         self,
         fullname: str,
@@ -3310,6 +3317,7 @@ class KeywordOnlyPlugin(Plugin):
             debug=self._debug,
         )
 
+    @override
     def get_attribute_hook(
         self,
         fullname: str,
