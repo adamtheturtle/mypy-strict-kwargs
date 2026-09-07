@@ -34,6 +34,7 @@ dynamic = [
 ]
 dependencies = [
     "mypy>=2.0.0",
+    "typing-extensions>=4.4.0",
 ]
 optional-dependencies.dev = [
     "actionlint-py==1.7.12.24",
@@ -328,7 +329,7 @@ plugins = [
 
 [tool.pyrefly]
 errors.non-exhaustive-match = "error"
-errors.unused-ignore = "error"
+preset = "strict"
 
 [tool.pyright]
 typeCheckingMode = "strict"
