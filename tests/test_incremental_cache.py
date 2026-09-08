@@ -8,12 +8,12 @@ from mypy import api
 def test_plugin_configuration_invalidates_cache(tmp_path: Path) -> None:
     """Changing plugin options rechecks otherwise fresh modules."""
     source_path = tmp_path / "example.py"
-    source_path.write_text(
+    _ = source_path.write_text(
         data="def function(value: int) -> None: ...\n\nfunction(1)\n",
         encoding="utf-8",
     )
     config_path = tmp_path / "mypy.ini"
-    config_path.write_text(
+    _ = config_path.write_text(
         data=(
             "[mypy]\n"
             "plugins = mypy_strict_kwargs\n"
@@ -37,7 +37,7 @@ def test_plugin_configuration_invalidates_cache(tmp_path: Path) -> None:
     assert first_stderr == ""
     assert "Success: no issues found" in first_stdout
 
-    config_path.write_text(
+    _ = config_path.write_text(
         data=("[mypy]\nplugins = mypy_strict_kwargs\nstrict = true\n"),
         encoding="utf-8",
     )

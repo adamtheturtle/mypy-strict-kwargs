@@ -13,9 +13,9 @@ _CONFIGURATION_ERROR_STATUS = 2
 def _run_mypy(*, tmp_path: Path, config: str, config_name: str) -> str:
     """Run ``mypy`` with a configuration file and return its errors."""
     source_path = tmp_path / "example.py"
-    source_path.write_text(data=_SOURCE, encoding="utf-8")
+    _ = source_path.write_text(data=_SOURCE, encoding="utf-8")
     config_path = tmp_path / config_name
-    config_path.write_text(data=config, encoding="utf-8")
+    _ = config_path.write_text(data=config, encoding="utf-8")
     _, stderr, status = api.run(
         args=[
             "--cache-dir",
