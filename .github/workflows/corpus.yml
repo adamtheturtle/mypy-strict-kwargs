@@ -72,7 +72,7 @@ jobs:
           # An internal error is written to standard error, so both
           # streams are captured.  Errors on standard output are
           # expected, so the exit status is ignored.
-          uv run --extra=dev mypy \
+          uv run --group=dev mypy \
               --no-incremental \
               --cache-dir=/dev/null \
               --config-file=corpus-mypy.ini \

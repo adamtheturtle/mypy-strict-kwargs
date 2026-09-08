@@ -36,7 +36,12 @@ dependencies = [
     "mypy>=2.0.0",
     "typing-extensions>=4.4.0",
 ]
-optional-dependencies.dev = [
+urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
+urls.Source = "https://github.com/adamtheturtle/mypy-strict-kwargs"
+entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plugin"
+
+[dependency-groups]
+dev = [
     "actionlint-py==1.7.12.24",
     "check-manifest==0.51",
     "deptry==0.25.1",
@@ -72,10 +77,7 @@ optional-dependencies.dev = [
     "yamlfix==1.19.1",
     "zizmor==1.30.0",
 ]
-optional-dependencies.release = [ "check-wheel-contents==0.6.3", "towncrier==26.9.0" ]
-urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
-urls.Source = "https://github.com/adamtheturtle/mypy-strict-kwargs"
-entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plugin"
+release = [ "check-wheel-contents==0.6.3", "towncrier==26.9.0" ]
 
 [tool.setuptools]
 packages.find.where = [
@@ -286,12 +288,6 @@ ignore = [
     "tests/**",
     "towncrier_template.rst.jinja",
     "zizmor.yml",
-]
-
-[tool.deptry]
-optional_dependencies_dev_groups = [
-    "dev",
-    "release",
 ]
 
 [tool.vulture]
