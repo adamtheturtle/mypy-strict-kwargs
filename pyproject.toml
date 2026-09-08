@@ -289,6 +289,7 @@ ignore = [
     "prek.toml",
     "readthedocs.yaml",
     "spelling_private_dict.txt",
+    "styles/snapper/**",
     "tests",
     "tests-pylintrc",
     "tests/**",
