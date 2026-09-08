@@ -1792,11 +1792,11 @@ def _element_annotation(
         return None
     fullname = resolver.fullname(annotation.name)
     if fullname in _ITERABLE_FULLNAMES and len(annotation.args) == 1:
-        return annotation.args[0]
+        return annotation.args[0]  # ty: ignore[unsound-return-statement]
     if fullname in _TUPLE_FULLNAMES and len(annotation.args) == 2:  # noqa: PLR2004
         # ``tuple[X, ...]`` yields values of type ``X``.
         if isinstance(annotation.args[1], EllipsisType):
-            return annotation.args[0]
+            return annotation.args[0]  # ty: ignore[unsound-return-statement]
         return None
     return None
 
@@ -2369,7 +2369,7 @@ def _unpacked_annotation(
         return annotation.type
     if isinstance(annotation, UnboundType) and len(annotation.args) == 1:
         if resolver.fullname(annotation.name) in _UNPACK_FULLNAMES:
-            return annotation.args[0]
+            return annotation.args[0]  # ty: ignore[unsound-return-statement]
         return None
     return None
 
