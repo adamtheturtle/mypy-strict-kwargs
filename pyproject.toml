@@ -68,6 +68,7 @@ dev = [
     # use it to lint shell commands in GitHub workflow files.
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.1.0",
+    "snapper-fmt==0.11.0",
     "sphinx-lint==1.0.2",
     "strict-kwargs==2026.8.28.post2",
     "towncrier==26.9.0",
@@ -286,6 +287,7 @@ ignore = [
     "prek.toml",
     "readthedocs.yaml",
     "spelling_private_dict.txt",
+    "styles/snapper/**",
     "tests",
     "tests-pylintrc",
     "tests/**",
