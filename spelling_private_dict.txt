@@ -3,5 +3,6 @@ iterable
 namespace
 pragma
 pyrefly
+ty
 unanalyzed
 unvalidated
