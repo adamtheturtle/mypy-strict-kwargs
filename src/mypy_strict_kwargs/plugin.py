@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, NoReturn, assert_never
+from typing import NoReturn, TypeGuard, assert_never
 
 from mypy.errorcodes import CALL_ARG
 from mypy.errors import CompileError
@@ -216,16 +216,16 @@ class _CollectedCalls(list[CallExpr]):
                     resolver=self.resolver,
                 )
                 if annotation_length is None:
-                    lengths.pop(name, None)
+                    _ = lengths.pop(name, None)
                 else:
                     lengths[name] = annotation_length
             # A ``global`` name is the module's, not an enclosing
             # scope's, until this scope assigns to it.
             for name in scope.global_names:
-                lengths.pop(name, None)
+                _ = lengths.pop(name, None)
             for name, length in scope.assigned_lengths.items():
                 if length is None:
-                    lengths.pop(name, None)
+                    _ = lengths.pop(name, None)
                 else:
                     lengths[name] = length
         return lengths
@@ -307,7 +307,8 @@ class _CollectedCalls(list[CallExpr]):
         if name in scope.nonlocal_names:
             # ``mypy`` rejects a ``nonlocal`` name which no enclosing
             # scope binds, so an owner is found for anything it checks.
-            owner = self._nonlocal_owner(name=name) or scope
+            nonlocal_owner = self._nonlocal_owner(name=name)
+            owner = scope if nonlocal_owner is None else nonlocal_owner
         _record_length(scope=owner, name=name, length=length)
 
     def _function_scopes(self) -> list[_Scope]:
@@ -531,7 +532,7 @@ def _write_debug_fullname(*, fullname: str, path: str) -> None:
     """
     if path.endswith(".pyi"):
         return
-    sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
+    _ = sys.stderr.write(f"DEBUG: mypy_strict_kwargs: {fullname}\n")
 
 
 # ``functools.partial`` and ``functools.partialmethod`` forward their
@@ -562,7 +563,7 @@ def _check_partial_arguments(
     # cannot raise.
     argument_groups: list[list[Expression]] = [*ctx.args, [], []]
     wrapped_arguments, bound_arguments = argument_groups[0], argument_groups[1]
-    if not wrapped_arguments or not bound_arguments:
+    if len(wrapped_arguments) == 0 or len(bound_arguments) == 0:
         return
 
     wrapped = get_proper_type(
@@ -589,7 +590,7 @@ def _check_partial_arguments(
         positional_argument_count=len(bound_arguments),
     ):
         description = _callable_description(name=wrapped.name)
-        ctx.api.fail(
+        _ = ctx.api.fail(
             f"Too many positional arguments for {description}",
             ctx.context,
             code=CALL_ARG,
@@ -756,7 +757,7 @@ def _check_overload_call_positional_arguments(
     if positional_argument_count <= preserved_positional_argument_count:
         return
 
-    ctx.api.fail(
+    _ = ctx.api.fail(
         "Too many positional arguments for "
         + _callable_description_from_fullname(
             fullname=fullname,
@@ -944,7 +945,9 @@ def _transform_callable_type(
         if kind == ArgKind.ARG_STAR
     ]
 
-    first_star_arg_index = star_arg_indices[0] if star_arg_indices else None
+    first_star_arg_index = (
+        star_arg_indices[0] if len(star_arg_indices) > 0 else None
+    )
 
     skip_offset = 1 if skip_bound_argument else 0
     skip_indices = {
@@ -1124,7 +1127,7 @@ def _super_method_mro(
 ) -> list[TypeInfo]:
     """Return method-resolution entries searched by ``super()``."""
     callee = expr.callee
-    if not isinstance(callee, SuperExpr) or not callee.call.args:
+    if not isinstance(callee, SuperExpr) or len(callee.call.args) == 0:
         return ctx.cls.info.mro[1:]
 
     explicit_super_type = callee.call.args[0]
@@ -1132,10 +1135,12 @@ def _super_method_mro(
         api=ctx.api,
         expression=explicit_super_type,
         visited=frozenset(),
-    ) or _mro_class_info(
-        mro=ctx.cls.info.mro,
-        expression=explicit_super_type,
     )
+    if explicit_super_info is None:
+        explicit_super_info = _mro_class_info(
+            mro=ctx.cls.info.mro,
+            expression=explicit_super_type,
+        )
     if explicit_super_info is None:
         # Which entries are searched depends on a starting type which
         # cannot be resolved, so nothing here is known.
@@ -1473,14 +1478,14 @@ def _called_expression_length(
     fullname = resolver.fullname(name)
     arguments = expression.args
 
-    if fullname in _ASSERT_TYPE_FULLNAMES and arguments:
+    if fullname in _ASSERT_TYPE_FULLNAMES and len(arguments) > 0:
         return _expression_length(
             expression=arguments[0],
             fixed_tuple_lengths=fixed_tuple_lengths,
             resolver=resolver,
             class_info=class_info,
         )
-    if fullname in _CAST_FULLNAMES and arguments:
+    if fullname in _CAST_FULLNAMES and len(arguments) > 0:
         return _fixed_tuple_annotation_length(
             annotation=_annotation_from_expression(
                 expression=arguments[0],
@@ -1636,13 +1641,11 @@ def _spread_positional_count(
                 fixed_tuple_lengths=fixed_tuple_lengths,
             )
         case _:
-            return (
-                _known_sequence_length(
-                    expression=expression,
-                    fixed_tuple_lengths=fixed_tuple_lengths,
-                )
-                or 0
+            known_length = _known_sequence_length(
+                expression=expression,
+                fixed_tuple_lengths=fixed_tuple_lengths,
             )
+            return 0 if known_length is None else known_length
 
 
 def _formals_disallow_positional(
@@ -2137,14 +2140,18 @@ def _collect_call_exprs_from_statement(  # noqa: C901, PLR0912, PLR0915  # pylin
         case Import(ids=ids):
             calls.bind(
                 {
-                    as_name or identifier.split(sep=".", maxsplit=1)[0]
+                    (
+                        identifier.split(sep=".", maxsplit=1)[0]
+                        if as_name is None
+                        else as_name
+                    )
                     for identifier, as_name in ids
                 }
             )
         case ImportFrom(names=imported_names):
             calls.bind(
                 {
-                    as_name or imported_name
+                    imported_name if as_name is None else as_name
                     for imported_name, as_name in imported_names
                 }
             )
@@ -2375,7 +2382,9 @@ def _literal_tuple_annotation_length(
     """Return the length of a written-out tuple annotation, if known."""
     if annotation.empty_tuple_index:
         return 0
-    if not annotation.args or isinstance(annotation.args[-1], EllipsisType):
+    if len(annotation.args) == 0 or isinstance(
+        annotation.args[-1], EllipsisType
+    ):
         return None
 
     length = 0
@@ -2512,7 +2521,7 @@ def _collect_call_exprs_from_comprehension(
     for position, (index, sequence, conditions) in enumerate(
         iterable=zip(indices, sequences, condlists, strict=True)
     ):
-        if position:
+        if position != 0:
             _collect_call_exprs(sequence, calls)
         _bind_iteration_target(index=index, iterable=sequence, calls=calls)
         _collect_call_exprs(index, calls)
@@ -2878,7 +2887,7 @@ def _check_pending_super_call(
         skip_bound_argument=skip_bound_argument,
         spread_lengths=pending.spread_lengths,
     ):
-        ctx.api.fail(
+        _ = ctx.api.fail(
             f'Too many positional arguments for "{pending.method_name}" '
             f'of "{pending.class_name}"',
             pending.call,
@@ -3039,20 +3048,18 @@ def _config_error(
     raise CompileError(messages=[f"{config_file}: [{section}]: {message}"])
 
 
-def _is_list(value: object, /) -> bool:
+def _is_list(value: object, /) -> TypeGuard[list[object]]:
     """Return whether a configuration value is a list.
 
-    This deliberately returns a plain ``bool`` rather than a
-    ``TypeGuard`` so that callers keep their explicitly dynamic type
-    instead of narrowing to a container of unknown items.
+    The element type remains ``object`` until each item is validated.
     """
     return isinstance(value, list)
 
 
-def _is_table(value: object, /) -> bool:
+def _is_table(value: object, /) -> TypeGuard[dict[str, object]]:
     """Return whether a configuration value is a table.
 
-    See ``_is_list`` for why this is not a ``TypeGuard``.
+    TOML tables have string keys and initially unvalidated values.
     """
     return isinstance(value, dict)
 
@@ -3067,8 +3074,7 @@ def _validated_ignore_names(
     strings.
     """
     message = '"ignore_names" must be an array of strings'
-    items: Any = value
-    if not _is_list(items):
+    if not _is_list(value):
         _config_error(
             config_file=config_file,
             section=section,
@@ -3076,7 +3082,7 @@ def _validated_ignore_names(
         )
 
     ignore_names: list[str] = []
-    for item in items:
+    for item in value:
         if not isinstance(item, str):
             _config_error(
                 config_file=config_file,
@@ -3112,8 +3118,14 @@ def _toml_plugin_configuration(
     with config_file.open(mode="rb") as config_file_object:
         config_dictionary = tomllib.load(config_file_object)
 
-    tools: dict[str, Any] = config_dictionary.get("tool", {})
-    plugin_config: Any = tools.get("mypy_strict_kwargs", {})
+    tools: object = config_dictionary.get("tool", {})
+    if not _is_table(tools):  # pragma: no cover
+        _config_error(
+            config_file=config_file,
+            section=section,
+            message="expected tool configuration to be a table",
+        )
+    plugin_config: object = tools.get("mypy_strict_kwargs", {})
     if not _is_table(plugin_config):
         _config_error(
             config_file=config_file,
@@ -3145,7 +3157,7 @@ def _ini_plugin_configuration(
     """
     section = "mypy_strict_kwargs"
     parser = configparser.ConfigParser()
-    parser.read(filenames=config_file)
+    _ = parser.read(filenames=config_file)
 
     if not parser.has_section(section=section):
         return _PluginConfiguration(ignore_names=[], debug=False)
@@ -3158,7 +3170,7 @@ def _ini_plugin_configuration(
     ignore_names = [
         name.strip()
         for name in ignore_names_str.split(sep=",")
-        if name.strip()
+        if name.strip() != ""
     ]
 
     try:
@@ -3264,7 +3276,7 @@ class KeywordOnlyPlugin(Plugin):
             mypy_plugin=self,
             fullname=fullname,
         )
-        if not overloads:
+        if len(overloads) == 0:
             return None
         return partial(
             _check_overload_function_call,
@@ -3283,7 +3295,7 @@ class KeywordOnlyPlugin(Plugin):
             mypy_plugin=self,
             fullname=fullname,
         )
-        if not overloads:
+        if len(overloads) == 0:
             return None
         return partial(
             _check_overload_method_call,
