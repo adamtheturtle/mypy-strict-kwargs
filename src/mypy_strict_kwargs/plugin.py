@@ -1783,12 +1783,12 @@ _ITERABLE_FULLNAMES = frozenset(
 
 
 def _is_mypy_type(value: object, /) -> TypeGuard[Type]:
-    """Narrow values exposed by mypy's compiled API to a type node."""
+    """Narrow a value from the compiled compiler API to a type node."""
     return isinstance(value, Type)
 
 
 def _type_argument(*, annotation: UnboundType, index: int) -> Type | None:
-    """Return one type argument after narrowing mypy's compiled API."""
+    """Return one type argument after narrowing the compiler API."""
     argument = annotation.args[index]
     return argument if _is_mypy_type(argument) else None
 
