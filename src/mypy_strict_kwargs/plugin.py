@@ -1782,6 +1782,17 @@ _ITERABLE_FULLNAMES = frozenset(
 )
 
 
+def _is_mypy_type(value: object, /) -> TypeGuard[Type]:
+    """Narrow values exposed by mypy's compiled API to a type node."""
+    return isinstance(value, Type)
+
+
+def _type_argument(*, annotation: UnboundType, index: int) -> Type | None:
+    """Return one type argument after narrowing mypy's compiled API."""
+    argument = annotation.args[index]
+    return argument if _is_mypy_type(argument) else None
+
+
 def _element_annotation(
     *,
     annotation: Type,
@@ -1792,11 +1803,11 @@ def _element_annotation(
         return None
     fullname = resolver.fullname(annotation.name)
     if fullname in _ITERABLE_FULLNAMES and len(annotation.args) == 1:
-        return annotation.args[0]  # ty: ignore[unsound-return-statement]
+        return _type_argument(annotation=annotation, index=0)
     if fullname in _TUPLE_FULLNAMES and len(annotation.args) == 2:  # noqa: PLR2004
         # ``tuple[X, ...]`` yields values of type ``X``.
         if isinstance(annotation.args[1], EllipsisType):
-            return annotation.args[0]  # ty: ignore[unsound-return-statement]
+            return _type_argument(annotation=annotation, index=0)
         return None
     return None
 
@@ -2369,7 +2380,7 @@ def _unpacked_annotation(
         return annotation.type
     if isinstance(annotation, UnboundType) and len(annotation.args) == 1:
         if resolver.fullname(annotation.name) in _UNPACK_FULLNAMES:
-            return annotation.args[0]  # ty: ignore[unsound-return-statement]
+            return _type_argument(annotation=annotation, index=0)
         return None
     return None
 
