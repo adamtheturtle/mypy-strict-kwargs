@@ -1,0 +1,1 @@
+Type parsed plugin configuration using TOML's recursive value domain.
