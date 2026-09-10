@@ -5,6 +5,7 @@ import sys
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from functools import partial
 from pathlib import Path
 from typing import NoReturn, TypeGuard, assert_never
@@ -3052,6 +3053,20 @@ class _PluginConfiguration:
     debug: bool
 
 
+_TomlValue = (
+    bool
+    | int
+    | float
+    | str
+    | date
+    | datetime
+    | time
+    | list["_TomlValue"]
+    | dict[str, "_TomlValue"]
+)
+_TomlTable = dict[str, _TomlValue]
+
+
 def _config_error(
     *, config_file: Path, section: str, message: str
 ) -> NoReturn:
@@ -3059,15 +3074,15 @@ def _config_error(
     raise CompileError(messages=[f"{config_file}: [{section}]: {message}"])
 
 
-def _is_list(value: object, /) -> TypeGuard[list[object]]:
+def _is_list(value: _TomlValue, /) -> TypeGuard[list[_TomlValue]]:
     """Return whether a configuration value is a list.
 
-    The element type remains ``object`` until each item is validated.
+    The element type remains a TOML value until each item is validated.
     """
     return isinstance(value, list)
 
 
-def _is_table(value: object, /) -> TypeGuard[dict[str, object]]:
+def _is_table(value: _TomlValue, /) -> TypeGuard[_TomlTable]:
     """Return whether a configuration value is a table.
 
     TOML tables have string keys and initially unvalidated values.
@@ -3077,7 +3092,7 @@ def _is_table(value: object, /) -> TypeGuard[dict[str, object]]:
 
 def _validated_ignore_names(
     *,
-    value: object,
+    value: _TomlValue,
     config_file: Path,
     section: str,
 ) -> list[str]:
@@ -3106,7 +3121,7 @@ def _validated_ignore_names(
 
 def _validated_debug(
     *,
-    value: object,
+    value: _TomlValue,
     config_file: Path,
     section: str,
 ) -> bool:
@@ -3127,16 +3142,16 @@ def _toml_plugin_configuration(
     """Return the plugin configuration from a TOML configuration file."""
     section = "tool.mypy_strict_kwargs"
     with config_file.open(mode="rb") as config_file_object:
-        config_dictionary = tomllib.load(config_file_object)
+        config_dictionary: _TomlTable = tomllib.load(config_file_object)
 
-    tools: object = config_dictionary.get("tool", {})
+    tools: _TomlValue = config_dictionary.get("tool", {})
     if not _is_table(tools):  # pragma: no cover
         _config_error(
             config_file=config_file,
             section=section,
             message="expected tool configuration to be a table",
         )
-    plugin_config: object = tools.get("mypy_strict_kwargs", {})
+    plugin_config: _TomlValue = tools.get("mypy_strict_kwargs", {})
     if not _is_table(plugin_config):
         _config_error(
             config_file=config_file,
