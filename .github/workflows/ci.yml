@@ -16,6 +16,7 @@ permissions: {}
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.11', '3.12', '3.13', '3.14']
         platform: [ubuntu-latest, windows-latest]
@@ -37,10 +38,47 @@ jobs:
         run: |
           # We run tests against "." and not the tests directory as we test the README
           # and documentation.
-          uv run --group=dev --python=${{ matrix.python-version }} pytest -s -vvv --cov-fail-under 100 --cov=src/ --cov=tests/ .
+          uv run --group=dev coverage run -m pytest -s -vvv .
+        env:
+          UV_PYTHON: ${{ matrix.python-version }}
+
+      - name: Upload coverage data
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.platform }}-${{ matrix.python-version }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
+
+  # Python 3.11-3.13 cannot parse template strings, so only the Python 3.14
+  # jobs can cover their AST traversal. Combine every job before checking 100%.
+  coverage:
+    name: Combine and check coverage
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: '**/pyproject.toml'
+          python-version: '3.14'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+      - name: Require 100% coverage
+        run: |
+          uv run --group=dev coverage combine
+          uv run --group=dev coverage report
 
   completion-ci:
-    needs: build
+    needs: [build, coverage]
     runs-on: ubuntu-latest
     if: always()  # Run even if one matrix job fails
     steps:
@@ -48,5 +86,9 @@ jobs:
         run: |-
           if ! ${{ needs.build.result == 'success' }}; then
             echo "One or more matrix jobs failed"
+            exit 1
+          fi
+          if ! ${{ needs.coverage.result == 'success' }}; then
+            echo "Coverage check failed"
             exit 1
           fi

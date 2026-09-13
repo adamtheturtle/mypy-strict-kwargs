@@ -44,6 +44,7 @@ entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plug
 dev = [
     "actionlint-py==1.7.12.24",
     "check-manifest==0.51",
+    "coverage==7.16.1",
     "deptry==0.25.1",
     "doc8==2.0.0",
     "doccmd==2026.9.7",
@@ -59,7 +60,6 @@ dev = [
     "pyright==1.1.411",
     "pyroma==5.0.1",
     "pytest==9.1.1",
-    "pytest-cov==7.1.0",
     "pytest-mypy-plugins==4.0.3",
     "pyyaml==6.0.3",
     "ruff==0.16.6",
@@ -372,7 +372,11 @@ log_cli = true
 xfail_strict = true
 
 [tool.coverage]
+run.source = [ "src/", "tests/" ]
 run.branch = true
+run.parallel = true
+run.relative_files = true
+report.fail_under = 100
 report.exclude_also = [
     "case _ as unreachable:\n\\s*assert_never\\(",
     "if TYPE_CHECKING:",
