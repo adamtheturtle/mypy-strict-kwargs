@@ -3082,6 +3082,24 @@
     main:9: error: Cast target is not a type  [misc]
     main:9: error: Too many positional arguments for "cast"  [call-arg]
 
+- case: super_calls_in_template_strings
+  skip: sys.version_info < (3, 14)
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    class Child(Base):
+        def call(self, args: tuple[int]) -> None:
+            _ = t"prefix {super().method(*args)}"
+            _ = t"{0:{super().method(*args)}}"
+  out: |-
+    main:7: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:8: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
 - case: super_module_level_analyzed_expressions
   mypy_config: |
     [mypy]
