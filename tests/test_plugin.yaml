@@ -3063,3 +3063,21 @@
         str(1)
   out: |-
     main:20: error: Too many positional arguments for "str"  [call-arg]
+
+- case: super_invalid_cast_annotation
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import cast
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    class Child(Base):
+        def invalid_cast(self) -> None:
+            super().method(*cast(lambda: None, (1,)))
+  out: |-
+    main:9: error: Cast target is not a type  [misc]
+    main:9: error: Too many positional arguments for "cast"  [call-arg]

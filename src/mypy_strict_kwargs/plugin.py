@@ -1459,9 +1459,9 @@ def _annotation_from_expression(
             expr=expression,
             options=resolver.api.options,
         )
-    except TypeTranslationError:  # pragma: no cover
-        # An invalid ``cast()`` target is reported by the type checker
-        # itself, so this only guards against a malformed syntax tree.
+    except TypeTranslationError:
+        # An invalid ``cast()`` target is reported by the type checker;
+        # it cannot tell us the length of an unpacked argument.
         return None
 
 
