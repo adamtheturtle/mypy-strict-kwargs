@@ -3081,3 +3081,55 @@
   out: |-
     main:9: error: Cast target is not a type  [misc]
     main:9: error: Too many positional arguments for "cast"  [call-arg]
+
+- case: super_module_level_analyzed_expressions
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import assert_type, cast, reveal_type
+
+    CAST_ARGS: tuple[int] = cast(tuple[int], (1,))
+    ASSERTED_ARGS: tuple[int] = assert_type((2,), tuple[int])
+    REVEALED_ARGS: tuple[int] = reveal_type(cast(tuple[int], (3,)))
+    UNKNOWN_ARGS = list[int]()
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    class Child(Base):
+        def cast_args(self) -> None:
+            super().method(*CAST_ARGS)
+
+        def asserted_args(self) -> None:
+            super().method(*ASSERTED_ARGS)
+
+        def revealed_args(self) -> None:
+            super().method(*REVEALED_ARGS)
+
+        def unknown_args(self) -> None:
+            super().method(*UNKNOWN_ARGS)
+  out: |-
+    main:5: note: Revealed type is "tuple[int]"
+    main:14: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:17: error: Too many positional arguments for "method" of "Base"  [call-arg]
+    main:20: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_module_level_reveal_locals
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    reveal_locals()
+
+    class Base:
+        def method(self, value: int) -> None:
+            return None
+
+    class Child(Base):
+        def method(self, value: int) -> None:
+            super().method(value)
+  out: |-
+    main:1: note: There are no locals to reveal
+    main:9: error: Too many positional arguments for "method" of "Base"  [call-arg]

@@ -1743,11 +1743,9 @@ def _collect_call_exprs(
             _collect_call_exprs(item.callee, calls)
             for argument in item.args:
                 _collect_call_exprs(argument, calls)
-            # ``analyzed`` holds the special-form rewrite of a call (such
-            # as a ``cast()`` call).  It is populated during type
-            # checking, which runs after this base-class hook, so it is
-            # always ``None`` for the class body we traverse here.
-            if item.analyzed is not None:  # pragma: no cover
+            # Module-level special forms are already rewritten by semantic
+            # analysis when the base-class hook collects their assignments.
+            if item.analyzed is not None:
                 _collect_call_exprs(item.analyzed, calls)
         case Statement() as statement:
             _collect_call_exprs_from_statement(statement, calls)
@@ -2587,15 +2585,9 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                 _collect_call_exprs(end_index, calls)
             if stride is not None:
                 _collect_call_exprs(stride, calls)
-        # ``cast()``/``assert_type()``/``reveal_type()`` are rewritten
-        # into these nodes during type checking, after this base-class
-        # hook runs; in the class body we traverse they are still plain
-        # ``CallExpr`` nodes, so these branches are never reached here.
-        case (
-            CastExpr(expr=expr) | AssertTypeExpr(expr=expr)
-        ):  # pragma: no cover
+        case CastExpr(expr=expr) | AssertTypeExpr(expr=expr):
             _collect_call_exprs(expr, calls)
-        case RevealExpr(kind=kind, expr=expr):  # pragma: no cover
+        case RevealExpr(kind=kind, expr=expr):
             if kind == REVEAL_TYPE and expr is not None:
                 _collect_call_exprs(expr, calls)
         case AssignmentExpr(target=NameExpr() as target, value=value):
@@ -2633,9 +2625,9 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         case IndexExpr(base=base, index=index) as index_expr:
             _collect_call_exprs(base, calls)
             _collect_call_exprs(index, calls)
-            # ``analyzed`` (a type application or type alias) is only set
-            # during type checking, after this base-class hook runs.
-            if index_expr.analyzed is not None:  # pragma: no cover
+            # Module-level type applications are rewritten during semantic
+            # analysis, before this base-class hook collects assignments.
+            if index_expr.analyzed is not None:
                 _collect_call_exprs(index_expr.analyzed, calls)
         case GeneratorExpr(
             indices=indices,
@@ -2675,10 +2667,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
             _collect_call_exprs(cond, calls)
             _collect_call_exprs(if_expr, calls)
             _collect_call_exprs(else_expr, calls)
-        # A bare ``TypeApplication`` only appears as the ``analyzed`` form
-        # of an ``IndexExpr`` produced during type checking, after this
-        # base-class hook runs, so this branch is never reached here.
-        case TypeApplication(expr=expr):  # pragma: no cover
+        case TypeApplication(expr=expr):
             _collect_call_exprs(expr, calls)
         case LambdaExpr():
             _collect_call_exprs_from_func_item(expression, calls)
