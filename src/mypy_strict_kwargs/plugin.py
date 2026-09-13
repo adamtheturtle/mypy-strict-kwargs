@@ -2564,13 +2564,10 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
         case YieldExpr(expr=expr):
             if expr is not None:
                 _collect_call_exprs(expr, calls)
-        case OpExpr(left=left, right=right) as op_expr:
+        case OpExpr(left=left, right=right):
+            # ``analyzed`` contains type-alias metadata, not calls.
             _collect_call_exprs(left, calls)
             _collect_call_exprs(right, calls)
-            # ``analyzed`` (e.g. a ``X | Y`` type expression) is only set
-            # during type checking, after this base-class hook runs.
-            if op_expr.analyzed is not None:  # pragma: no cover
-                _collect_call_exprs(op_expr.analyzed, calls)
         case ComparisonExpr(operands=operands):
             for operand in operands:
                 _collect_call_exprs(operand, calls)
