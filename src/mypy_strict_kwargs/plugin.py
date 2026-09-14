@@ -2605,9 +2605,7 @@ def _collect_call_exprs_from_expression(  # noqa: C901, PLR0912, PLR0915  # pyli
                 if key is not None:
                     _collect_call_exprs(key, calls)
                 _collect_call_exprs(value, calls)
-        # PEP 750 template strings (``t"..."``) only parse on Python
-        # 3.14+, so this branch is not exercised by the test suite.
-        case TemplateStrExpr(items=template_items):  # pragma: no cover
+        case TemplateStrExpr(items=template_items):
             for template_item in template_items:
                 if isinstance(template_item, tuple):
                     expression, _, _, format_expr = template_item
