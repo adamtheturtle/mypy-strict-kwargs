@@ -8,7 +8,7 @@ Enforce using keyword arguments where possible.
 For example, if we have a function which takes two regular argument, there are three ways to call it.
 With this plugin, ``mypy`` will only accept the form where keyword arguments are used.
 
-.. code-block:: python
+.. code:: python
 
    """Showcase errors when calling a function without naming the arguments."""
 
@@ -25,9 +25,9 @@ With this plugin, ``mypy`` will only accept the form where keyword arguments are
 Why?
 ----
 
-* In the same spirit as a formatter - think ``black`` or ``ruff format`` - this lets you stop spending time discussing whether a function call should use keyword arguments.
-* Sometimes positional arguments are best at first, and then more and more are added and code becomes unclear, without anyone stopping to refactor to keyword arguments.
-* The type checker gives better errors when keyword arguments are used.
+- In the same spirit as a formatter - think ``black`` or ``ruff format`` - this lets you stop spending time discussing whether a function call should use keyword arguments.
+- Sometimes positional arguments are best at first, and then more and more are added and code becomes unclear, without anyone stopping to refactor to keyword arguments.
+- The type checker gives better errors when keyword arguments are used.
   For example, with positional arguments, you may see, ``Argument 5 to "add" has incompatible type "str"; expected "int"``.
   This requires that you count the arguments to see which one is wrong.
   With keyword arguments, you get ``Argument "e" to "add" has incompatible type "str"; expected "int"``.
@@ -35,20 +35,20 @@ Why?
 Installation
 ------------
 
-.. code-block:: shell
+.. code:: shell
 
    pip install mypy-strict-kwargs
 
-This is tested on Python |minimum-python-version|\+.
+This is tested on Python 3.11+.
 
 Configure ``mypy`` to use the plugin
 ------------------------------------
 
-Add the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/stable/config_file.html>`_:
+Add the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/stable/config_file.html>`__:
 
 ``pyproject.toml``:
 
-.. code-block:: toml
+.. code:: toml
 
    [tool.mypy]
 
@@ -58,14 +58,14 @@ Add the plugin to your `mypy configuration file <https://mypy.readthedocs.io/en/
 
 ``mypy.ini`` or ``.mypy.ini``:
 
-.. code-block:: ini
+.. code:: ini
 
    [mypy]
    plugins = mypy_strict_kwargs
 
 ``setup.cfg``:
 
-.. code-block:: ini
+.. code:: ini
 
    [mypy]
    plugins = mypy_strict_kwargs
@@ -77,14 +77,14 @@ You can ignore functions by adding configuration to your mypy configuration file
 
 ``pyproject.toml``:
 
-.. code-block:: toml
+.. code:: toml
 
    [tool.mypy_strict_kwargs]
    ignore_names = ["main.func", "builtins.str"]
 
 ``mypy.ini``, ``.mypy.ini``, or ``setup.cfg``:
 
-.. code-block:: ini
+.. code:: ini
 
    [mypy_strict_kwargs]
    ignore_names = main.func, builtins.str
@@ -96,14 +96,14 @@ To find the name of a function to ignore, set the following configuration:
 
 ``pyproject.toml``:
 
-.. code-block:: toml
+.. code:: toml
 
    [tool.mypy_strict_kwargs]
    debug = true
 
 ``mypy.ini``, ``.mypy.ini``, or ``setup.cfg``:
 
-.. code-block:: ini
+.. code:: ini
 
    [mypy_strict_kwargs]
    debug = true
@@ -114,4 +114,3 @@ Then run ``mypy`` and look for the debug output.
    :target: https://github.com/adamtheturtle/mypy-strict-kwargs/actions
 .. |PyPI| image:: https://badge.fury.io/py/mypy-strict-kwargs.svg
    :target: https://badge.fury.io/py/mypy-strict-kwargs
-.. |minimum-python-version| replace:: 3.11
