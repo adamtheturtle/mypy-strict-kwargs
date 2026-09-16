@@ -1498,7 +1498,11 @@ def _called_expression_length(
             ),
             resolver=resolver,
         )
-    if fullname in _GET_ITEM_FULLNAMES and len(arguments) == 2:  # noqa: PLR2004
+    get_item_argument_count = 2
+    if (
+        fullname in _GET_ITEM_FULLNAMES
+        and len(arguments) == get_item_argument_count
+    ):
         item = _selected_item(base=arguments[0], index=arguments[1])
         return (
             None
@@ -1807,7 +1811,11 @@ def _element_annotation(
     fullname = resolver.fullname(annotation.name)
     if fullname in _ITERABLE_FULLNAMES and len(annotation.args) == 1:
         return _type_argument(annotation=annotation, index=0)
-    if fullname in _TUPLE_FULLNAMES and len(annotation.args) == 2:  # noqa: PLR2004
+    homogeneous_tuple_argument_count = 2
+    if (
+        fullname in _TUPLE_FULLNAMES
+        and len(annotation.args) == homogeneous_tuple_argument_count
+    ):
         # ``tuple[X, ...]`` yields values of type ``X``.
         if isinstance(annotation.args[1], EllipsisType):
             return _type_argument(annotation=annotation, index=0)
