@@ -994,8 +994,9 @@ def _transform_callable_type(
         else:
             new_arg_kinds.append(kind)
 
-    # See https://github.com/facebook/pyrefly/issues/1995.
     return signature.copy_modified(
+        # Pyrefly does not yet model the checker library's FlexibleAlias here.
+        # See https://github.com/facebook/pyrefly/issues/1995.
         arg_kinds=new_arg_kinds,  # pyrefly: ignore[bad-argument-type]
     )
 
