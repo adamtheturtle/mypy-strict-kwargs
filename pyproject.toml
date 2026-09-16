@@ -51,7 +51,7 @@ dev = [
     "interrogate==1.7.0",
     "mypy[faster-cache]==2.3.1",
     "no-defaults==2026.9.1",
-    "prek==0.5.2",
+    "prek==0.5.3",
     "pydocstringformatter==1.0.0",
     "pylint[spelling]==4.0.8",
     "pylint-per-file-ignores==3.2.1",
