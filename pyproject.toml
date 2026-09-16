@@ -44,14 +44,16 @@ entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plug
 dev = [
     "actionlint-py==1.7.12.24",
     "check-manifest==0.51",
+    # doccmd 2026.9.16 needs compose_callbacks, removed in click-compose 2026.9.16.1.
+    "click-compose==2026.9.16",
     "coverage==7.16.1",
     "deptry==0.25.1",
     "doc8==2.0.0",
-    "doccmd==2026.9.7",
+    "doccmd==2026.9.16",
     "interrogate==1.7.0",
     "mypy[faster-cache]==2.3.1",
     "no-defaults==2026.9.1",
-    "prek==0.5.2",
+    "prek==0.5.3",
     "pydocstringformatter==1.0.0",
     "pylint[spelling]==4.0.8",
     "pylint-per-file-ignores==3.2.1",
@@ -68,7 +70,7 @@ dev = [
     # use it to lint shell commands in GitHub workflow files.
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.2.0",
-    "snapper-fmt==0.11.2",
+    "snapper-fmt==0.11.3",
     "sphinx-lint==1.0.2",
     "strict-kwargs==2026.8.28.post2",
     "towncrier==26.9.0",
