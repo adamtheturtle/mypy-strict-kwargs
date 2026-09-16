@@ -864,6 +864,8 @@ def _transform_signature(
             ignore_names=ignore_names,
         )
 
+    # The checker invokes this hook once per overload item, so this invariant
+    # check also narrows the public hook interface's broader return type.
     assert isinstance(default_signature, CallableType)  # noqa: S101
     if _signature_is_overload_item(signature=default_signature):
         return default_signature
@@ -990,8 +992,9 @@ def _transform_callable_type(
         else:
             new_arg_kinds.append(kind)
 
-    # See https://github.com/facebook/pyrefly/issues/1995.
     return signature.copy_modified(
+        # Pyrefly does not yet model the checker library's FlexibleAlias here.
+        # See https://github.com/facebook/pyrefly/issues/1995.
         arg_kinds=new_arg_kinds,  # pyrefly: ignore[bad-argument-type]
     )
 
@@ -1494,7 +1497,11 @@ def _called_expression_length(
             ),
             resolver=resolver,
         )
-    if fullname in _GET_ITEM_FULLNAMES and len(arguments) == 2:  # noqa: PLR2004
+    get_item_argument_count = 2
+    if (
+        fullname in _GET_ITEM_FULLNAMES
+        and len(arguments) == get_item_argument_count
+    ):
         item = _selected_item(base=arguments[0], index=arguments[1])
         return (
             None
@@ -1803,7 +1810,11 @@ def _element_annotation(
     fullname = resolver.fullname(annotation.name)
     if fullname in _ITERABLE_FULLNAMES and len(annotation.args) == 1:
         return _type_argument(annotation=annotation, index=0)
-    if fullname in _TUPLE_FULLNAMES and len(annotation.args) == 2:  # noqa: PLR2004
+    homogeneous_tuple_argument_count = 2
+    if (
+        fullname in _TUPLE_FULLNAMES
+        and len(annotation.args) == homogeneous_tuple_argument_count
+    ):
         # ``tuple[X, ...]`` yields values of type ``X``.
         if isinstance(annotation.args[1], EllipsisType):
             return _type_argument(annotation=annotation, index=0)
@@ -2960,6 +2971,8 @@ def _collect_call_exprs_from_pattern(
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
+    # The visitor dispatches only these supported concrete pattern variants;
+    # this invariant check narrows the broader Pattern base class.
     assert isinstance(  # noqa: S101
         pattern,
         (
@@ -3358,6 +3371,8 @@ def _toml_plugin_configuration(
         config_dictionary: _TomlTable = tomllib.load(config_file_object)
 
     tools: _TomlValue = config_dictionary.get("tool", {})
+    # TOML cannot produce a scalar ``tool`` value alongside the nested plugin
+    # table, so this is a defensive check for malformed parser input.
     if not _is_table(tools):  # pragma: no cover
         _config_error(
             config_file=config_file,
