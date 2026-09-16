@@ -865,7 +865,9 @@ def _transform_signature(
         )
 
     # The checker invokes this hook once per overload item, so this invariant
-    # check also narrows the public hook interface's broader return type.
+    # check also narrows the public hook interface's broader return type. The
+    # delegated default hooks have the same broad return annotation:
+    # https://github.com/python/mypy/issues/21994.
     assert isinstance(default_signature, CallableType)  # noqa: S101
     if _signature_is_overload_item(signature=default_signature):
         return default_signature
