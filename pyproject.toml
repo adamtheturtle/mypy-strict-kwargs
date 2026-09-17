@@ -44,12 +44,11 @@ entry-points."mypy.plugins".mypy_strict_kwargs = "mypy_strict_kwargs.plugin:plug
 dev = [
     "actionlint-py==1.7.12.24",
     "check-manifest==0.51",
-    # doccmd 2026.9.16 needs compose_callbacks, removed in click-compose 2026.9.16.1.
-    "click-compose==2026.9.16",
+    "click-compose==2026.9.16.1",
     "coverage==7.16.1",
     "deptry==0.25.1",
     "doc8==2.0.0",
-    "doccmd==2026.9.16",
+    "doccmd==2026.9.16.1",
     "interrogate==1.7.0",
     "mypy[faster-cache]==2.3.1",
     "no-defaults==2026.9.1",
