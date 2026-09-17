@@ -2975,6 +2975,7 @@ def _collect_call_exprs_from_pattern(
     """Collect call expressions from a match pattern."""
     # Match patterns have the broad Pattern type, though the parser constructs
     # only these concrete variants. Check and narrow before matching.
+    # See https://github.com/python/mypy/pull/22000.
     assert isinstance(  # noqa: S101
         pattern,
         (
