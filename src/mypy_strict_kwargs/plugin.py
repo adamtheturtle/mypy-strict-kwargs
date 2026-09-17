@@ -3373,9 +3373,9 @@ def _toml_plugin_configuration(
         config_dictionary: _TomlTable = tomllib.load(config_file_object)
 
     tools: _TomlValue = config_dictionary.get("tool", {})
-    # TOML cannot produce a scalar ``tool`` value alongside the nested plugin
-    # table, so this is a defensive check for malformed parser input.
-    if not _is_table(tools):  # pragma: no cover
+    # A scalar ``tool`` value is valid TOML but cannot contain the plugin
+    # table. Reject it when this configuration reader receives it directly.
+    if not _is_table(tools):
         _config_error(
             config_file=config_file,
             section=section,
