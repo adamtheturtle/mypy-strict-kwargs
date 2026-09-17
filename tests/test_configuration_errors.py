@@ -2,7 +2,12 @@
 
 from pathlib import Path
 
+import pytest
 from mypy import api
+from mypy.errors import CompileError
+from mypy.options import Options
+
+from mypy_strict_kwargs.plugin import KeywordOnlyPlugin
 
 _SOURCE = "def function(value: int) -> None: ...\n\nfunction(1)\n"
 
@@ -43,6 +48,25 @@ def test_toml_scalar_plugin_section(tmp_path: Path) -> None:
     )
 
     assert "[tool.mypy_strict_kwargs]: expected a table" in stderr
+
+
+def test_toml_scalar_tool_section(tmp_path: Path) -> None:
+    """A scalar ``tool`` value is rejected by the plugin configuration
+    reader.
+    """
+    config_file = tmp_path / "pyproject.toml"
+    _ = config_file.write_text(data="tool = 1\n", encoding="utf-8")
+    options = Options()
+    options.config_file = str(object=config_file)
+
+    with pytest.raises(expected_exception=CompileError) as error:
+        _ = KeywordOnlyPlugin(options=options)
+
+    expected_message = (
+        f"{config_file}: [tool.mypy_strict_kwargs]: "
+        "expected tool configuration to be a table"
+    )
+    assert error.value.messages == [expected_message]
 
 
 def test_toml_ignore_names_string(tmp_path: Path) -> None:
