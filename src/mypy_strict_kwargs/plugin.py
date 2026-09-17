@@ -3373,8 +3373,6 @@ def _toml_plugin_configuration(
         config_dictionary: _TomlTable = tomllib.load(config_file_object)
 
     tools: _TomlValue = config_dictionary.get("tool", {})
-    # A scalar ``tool`` value is valid TOML but cannot contain the plugin
-    # table. Reject it when this configuration reader receives it directly.
     if not _is_table(tools):
         _config_error(
             config_file=config_file,
