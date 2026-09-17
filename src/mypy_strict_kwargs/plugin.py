@@ -3371,7 +3371,7 @@ def _toml_plugin_configuration(
         config_dictionary: _TomlTable = tomllib.load(config_file_object)
 
     tools: _TomlValue = config_dictionary.get("tool", {})
-    if not _is_table(tools):  # pragma: no cover
+    if not _is_table(tools):
         _config_error(
             config_file=config_file,
             section=section,
