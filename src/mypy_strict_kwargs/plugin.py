@@ -2973,8 +2973,8 @@ def _collect_call_exprs_from_pattern(
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
-    # Mypy types match patterns as Pattern, though its parser constructs only
-    # these concrete variants. Check and narrow that type before matching.
+    # Match patterns have the broad Pattern type, though the parser constructs
+    # only these concrete variants. Check and narrow before matching.
     assert isinstance(  # noqa: S101
         pattern,
         (
