@@ -1,6 +1,7 @@
 """Tests for incremental cache invalidation."""
 
 from pathlib import Path
+from textwrap import dedent
 
 from mypy import api
 
@@ -35,7 +36,7 @@ def test_plugin_configuration_invalidates_cache(tmp_path: Path) -> None:
 
     assert first_status == 0
     assert first_stderr == ""
-    assert "Success: no issues found" in first_stdout
+    assert first_stdout == "Success: no issues found in 1 source file\n"
 
     _ = config_path.write_text(
         data=("[mypy]\nplugins = mypy_strict_kwargs\nstrict = true\n"),
@@ -46,4 +47,10 @@ def test_plugin_configuration_invalidates_cache(tmp_path: Path) -> None:
 
     assert second_status == 1
     assert second_stderr == ""
-    assert 'Too many positional arguments for "function"' in second_stdout
+    error = 'Too many positional arguments for "function"'
+    assert second_stdout == dedent(
+        text=f"""\
+        {source_path}:3: error: {error}  [call-arg]
+        Found 1 error in 1 file (checked 1 source file)
+        """
+    )
