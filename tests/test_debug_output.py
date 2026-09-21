@@ -67,36 +67,18 @@ def _debug_names(
     ]
 
 
-def test_super_method_fullname_is_written(
+def test_called_fullnames_are_written(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The name checked by a ``super()`` call is written."""
+    """The names checked by calls are written."""
     names = _debug_names(tmp_path=tmp_path, capsys=capsys)
 
-    assert "example.Base.method" in names
-
-
-def test_non_method_member_fullname_is_written(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """The name of a ``super()`` member which is not a method is
-    written.
-    """
-    names = _debug_names(tmp_path=tmp_path, capsys=capsys)
-
-    assert "example.Base.assigned" in names
-
-
-def test_called_function_fullname_is_written(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """The name of a called function is written."""
-    names = _debug_names(tmp_path=tmp_path, capsys=capsys)
-
-    assert "example.function" in names
+    assert [name for name in names if name.startswith("example.")] == [
+        "example.Base.method",
+        "example.Base.assigned",
+        "example.function",
+    ]
 
 
 def test_typeshed_names_are_not_written(

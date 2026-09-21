@@ -31,7 +31,7 @@ def _run_mypy(*, tmp_path: Path, config: str, config_name: str) -> str:
         ]
     )
     assert status == _CONFIGURATION_ERROR_STATUS
-    return stderr
+    return stderr.removeprefix(f"{config_path}: ")
 
 
 def test_toml_scalar_plugin_section(tmp_path: Path) -> None:
@@ -47,7 +47,7 @@ def test_toml_scalar_plugin_section(tmp_path: Path) -> None:
         config_name="pyproject.toml",
     )
 
-    assert "[tool.mypy_strict_kwargs]: expected a table" in stderr
+    assert stderr == "[tool.mypy_strict_kwargs]: expected a table\n"
 
 
 def test_toml_scalar_tool_section(tmp_path: Path) -> None:
@@ -82,9 +82,11 @@ def test_toml_ignore_names_string(tmp_path: Path) -> None:
         config_name="pyproject.toml",
     )
 
-    assert (
-        '[tool.mypy_strict_kwargs]: "ignore_names" must be an array of strings'
-    ) in stderr
+    expected = (
+        '[tool.mypy_strict_kwargs]: "ignore_names" '
+        "must be an array of strings\n"
+    )
+    assert stderr == expected
 
 
 def test_toml_ignore_names_non_string_item(tmp_path: Path) -> None:
@@ -100,9 +102,11 @@ def test_toml_ignore_names_non_string_item(tmp_path: Path) -> None:
         config_name="pyproject.toml",
     )
 
-    assert (
-        '[tool.mypy_strict_kwargs]: "ignore_names" must be an array of strings'
-    ) in stderr
+    expected = (
+        '[tool.mypy_strict_kwargs]: "ignore_names" '
+        "must be an array of strings\n"
+    )
+    assert stderr == expected
 
 
 def test_toml_debug_string(tmp_path: Path) -> None:
@@ -118,7 +122,7 @@ def test_toml_debug_string(tmp_path: Path) -> None:
         config_name="pyproject.toml",
     )
 
-    assert '[tool.mypy_strict_kwargs]: "debug" must be a boolean' in stderr
+    assert stderr == '[tool.mypy_strict_kwargs]: "debug" must be a boolean\n'
 
 
 def test_ini_debug_not_a_boolean(tmp_path: Path) -> None:
@@ -134,4 +138,4 @@ def test_ini_debug_not_a_boolean(tmp_path: Path) -> None:
         config_name="mypy.ini",
     )
 
-    assert '[mypy_strict_kwargs]: "debug" must be a boolean' in stderr
+    assert stderr == '[mypy_strict_kwargs]: "debug" must be a boolean\n'
