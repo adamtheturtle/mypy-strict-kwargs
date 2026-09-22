@@ -3371,7 +3371,9 @@ def _toml_plugin_configuration(
     """Return the plugin configuration from a TOML configuration file."""
     section = "tool.mypy_strict_kwargs"
     with config_file.open(mode="rb") as config_file_object:
-        config_dictionary: _TomlTable = tomllib.load(config_file_object)
+        config_dictionary = tomllib.load(config_file_object)
+    if not _is_table(config_dictionary):  # pragma: no cover
+        raise TypeError
 
     tools: _TomlValue = config_dictionary.get("tool", {})
     if not _is_table(tools):
