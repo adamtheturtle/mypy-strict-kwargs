@@ -3311,7 +3311,7 @@ def _is_list(value: _TomlValue, /) -> TypeGuard[list[_TomlValue]]:
     return isinstance(value, list)
 
 
-def _is_table(value: _TomlValue, /) -> TypeGuard[_TomlTable]:
+def _is_table(value: object, /) -> TypeGuard[_TomlTable]:
     """Return whether a configuration value is a table.
 
     TOML tables have string keys and initially unvalidated values.
@@ -3372,10 +3372,8 @@ def _toml_plugin_configuration(
     section = "tool.mypy_strict_kwargs"
     with config_file.open(mode="rb") as config_file_object:
         config_dictionary = tomllib.load(config_file_object)
-    if not _is_table(config_dictionary):  # pragma: no cover
-        raise TypeError
 
-    tools: _TomlValue = config_dictionary.get("tool", {})
+    tools: object = config_dictionary.get("tool", {})
     if not _is_table(tools):
         _config_error(
             config_file=config_file,
