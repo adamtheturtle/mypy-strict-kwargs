@@ -45,7 +45,7 @@ dev = [
     "actionlint-py==1.7.12.25",
     "check-manifest==0.51",
     "click-compose==2026.9.16.1",
-    "coverage==7.16.1",
+    "coverage==7.16.2",
     "deptry==0.25.1",
     "doc8==2.0.0",
     "doccmd==2026.9.16.1",
