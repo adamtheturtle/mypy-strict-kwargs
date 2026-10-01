@@ -3158,6 +3158,7 @@
     plugins = mypy_strict_kwargs
     python_version = 3.15
     native_parser = true
+    incremental = false
   main: |-
     class Base:
         def method(self, value: int) -> dict[str, int]:
