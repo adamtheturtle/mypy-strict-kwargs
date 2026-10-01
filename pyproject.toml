@@ -52,7 +52,7 @@ dev = [
     "interrogate==1.7.0",
     "mypy==2.3.1",
     "no-defaults==2026.9.1",
-    "prek==0.5.3",
+    "prek==0.5.4",
     "pydocstringformatter==1.0.0",
     "pylint[spelling]==4.0.9",
     "pylint-per-file-ignores==3.2.1",
