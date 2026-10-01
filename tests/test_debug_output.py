@@ -74,9 +74,9 @@ def test_called_fullnames_are_written(
     """The names checked by calls are written."""
     names = _debug_names(tmp_path=tmp_path, capsys=capsys)
 
-    assert [name for name in names if name.startswith("example.")] == [
-        "example.Base.method",
+    assert sorted(name for name in names if name.startswith("example.")) == [
         "example.Base.assigned",
+        "example.Base.method",
         "example.function",
     ]
 

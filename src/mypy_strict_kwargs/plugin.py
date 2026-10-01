@@ -3,7 +3,7 @@
 import configparser
 import sys
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from functools import partial
@@ -356,7 +356,7 @@ def _binding_target_names(target: Expression, /) -> set[str]:
             return set()
 
 
-def _patterns_bound_names(patterns: list[Pattern], /) -> set[str]:
+def _patterns_bound_names(patterns: Sequence[Pattern], /) -> set[str]:
     """Return the names captured by a list of match patterns."""
     names: set[str] = set()
     for pattern in patterns:
@@ -380,7 +380,7 @@ def _as_pattern_bound_names(
 
 def _mapping_pattern_bound_names(
     *,
-    values: list[Pattern],
+    values: Sequence[Pattern],
     rest: Expression | None,
 ) -> set[str]:
     """Return the names captured by a mapping pattern."""
@@ -2852,7 +2852,7 @@ def _collect_call_exprs_from_comprehension_expression(
                 indices=indices,
                 sequences=sequences,
                 condlists=condlists,
-                results=[key, value],
+                results=[value] if key is None else [key, value],
                 calls=calls,
             )
         case (
@@ -2917,7 +2917,7 @@ def _collect_call_exprs_from_expression(
 
 
 def _collect_call_exprs_from_patterns(
-    patterns: list[Pattern],
+    patterns: Sequence[Pattern],
     calls: _CollectedCalls,
     /,
 ) -> None:
@@ -2942,7 +2942,7 @@ def _collect_call_exprs_from_as_pattern(
 def _collect_call_exprs_from_mapping_pattern(
     *,
     keys: list[Expression],
-    values: list[Pattern],
+    values: Sequence[Pattern],
     rest: Expression | None,
     calls: _CollectedCalls,
 ) -> None:
@@ -2957,8 +2957,8 @@ def _collect_call_exprs_from_mapping_pattern(
 def _collect_call_exprs_from_class_pattern(
     *,
     class_ref: Expression,
-    positionals: list[Pattern],
-    keyword_values: list[Pattern],
+    positionals: Sequence[Pattern],
+    keyword_values: Sequence[Pattern],
     calls: _CollectedCalls,
 ) -> None:
     """Collect call expressions from a class pattern."""
