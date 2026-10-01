@@ -33,7 +33,7 @@ dynamic = [
     "version",
 ]
 dependencies = [
-    "mypy>=2.0.0",
+    "mypy>=2.4.0",
     "typing-extensions>=4.4.0",
 ]
 urls.Documentation = "https://mypy-strict-kwargs.readthedocs.io/en/latest/"
