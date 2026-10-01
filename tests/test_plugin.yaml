@@ -3151,3 +3151,24 @@
   out: |-
     main:1: note: There are no locals to reveal
     main:9: error: Too many positional arguments for "method" of "Base"  [call-arg]
+
+- case: super_calls_in_unpacking_dictionary_comprehensions
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+    python_version = 3.15
+    native_parser = true
+    incremental = false
+  main: |-
+    class Base:
+        def method(self, value: int) -> dict[str, int]:
+            return {"value": value}
+
+    class Child(Base):
+        def build(self, values: list[int]) -> dict[str, int]:
+            return {**super().method(value) for value in values}
+
+        def valid(self, values: list[int]) -> dict[str, int]:
+            return {**super().method(value=value) for value in values}
+  out: |-
+    main:7: error: Too many positional arguments for "method" of "Base"  [call-arg]

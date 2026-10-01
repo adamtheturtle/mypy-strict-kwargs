@@ -3,7 +3,7 @@
 import configparser
 import sys
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from functools import partial
@@ -85,9 +85,9 @@ from mypy.options import Options
 from mypy.patterns import (
     AsPattern,
     ClassPattern,
+    ConcretePattern,
     MappingPattern,
     OrPattern,
-    Pattern,
     SequencePattern,
     SingletonPattern,
     StarredPattern,
@@ -356,7 +356,7 @@ def _binding_target_names(target: Expression, /) -> set[str]:
             return set()
 
 
-def _patterns_bound_names(patterns: list[Pattern], /) -> set[str]:
+def _patterns_bound_names(patterns: Sequence[ConcretePattern], /) -> set[str]:
     """Return the names captured by a list of match patterns."""
     names: set[str] = set()
     for pattern in patterns:
@@ -366,7 +366,7 @@ def _patterns_bound_names(patterns: list[Pattern], /) -> set[str]:
 
 def _as_pattern_bound_names(
     *,
-    inner_pattern: Pattern | None,
+    inner_pattern: ConcretePattern | None,
     name: Expression | None,
 ) -> set[str]:
     """Return the names captured by an as pattern."""
@@ -380,7 +380,7 @@ def _as_pattern_bound_names(
 
 def _mapping_pattern_bound_names(
     *,
-    values: list[Pattern],
+    values: Sequence[ConcretePattern],
     rest: Expression | None,
 ) -> set[str]:
     """Return the names captured by a mapping pattern."""
@@ -390,7 +390,7 @@ def _mapping_pattern_bound_names(
     return names
 
 
-def _pattern_bound_names(pattern: Pattern, /) -> set[str]:
+def _pattern_bound_names(pattern: ConcretePattern, /) -> set[str]:
     """Return the names captured by a match pattern."""
     match pattern:
         case AsPattern(pattern=inner_pattern, name=name):
@@ -598,8 +598,8 @@ def _check_partial_arguments(
         )
 
 
-_FunctionSigHook = Callable[[FunctionSigContext], FunctionLike]
-_MethodSigHook = Callable[[MethodSigContext], FunctionLike]
+_FunctionSigHook = Callable[[FunctionSigContext], CallableType]
+_MethodSigHook = Callable[[MethodSigContext], CallableType]
 _FunctionHook = Callable[[FunctionContext], Type]
 _MethodHook = Callable[[MethodContext], Type]
 _AttributeHook = Callable[[AttributeContext], Type]
@@ -841,7 +841,7 @@ def _transform_signature(
     *,
     ignore_names: list[str],
     debug: bool,
-    default_signature: FunctionLike,
+    default_signature: CallableType,
 ) -> CallableType:
     """Transform positional arguments to keyword-only arguments.
 
@@ -864,11 +864,6 @@ def _transform_signature(
             ignore_names=ignore_names,
         )
 
-    # The checker invokes this hook once per overload item, so this invariant
-    # check also narrows the public hook interface's broader return type. The
-    # delegated default hooks have the same broad return annotation:
-    # https://github.com/python/mypy/issues/21994.
-    assert isinstance(default_signature, CallableType)  # noqa: S101
     if _signature_is_overload_item(signature=default_signature):
         return default_signature
 
@@ -1865,7 +1860,7 @@ def _bind_iteration_target(
 
 def _bind_pattern_capture(
     *,
-    pattern: Pattern,
+    pattern: ConcretePattern,
     subject: Expression,
     calls: _CollectedCalls,
 ) -> None:
@@ -2852,7 +2847,7 @@ def _collect_call_exprs_from_comprehension_expression(
                 indices=indices,
                 sequences=sequences,
                 condlists=condlists,
-                results=[key, value],
+                results=[value] if key is None else [key, value],
                 calls=calls,
             )
         case (
@@ -2917,7 +2912,7 @@ def _collect_call_exprs_from_expression(
 
 
 def _collect_call_exprs_from_patterns(
-    patterns: list[Pattern],
+    patterns: Sequence[ConcretePattern],
     calls: _CollectedCalls,
     /,
 ) -> None:
@@ -2928,7 +2923,7 @@ def _collect_call_exprs_from_patterns(
 
 def _collect_call_exprs_from_as_pattern(
     *,
-    inner_pattern: Pattern | None,
+    inner_pattern: ConcretePattern | None,
     name: Expression | None,
     calls: _CollectedCalls,
 ) -> None:
@@ -2942,7 +2937,7 @@ def _collect_call_exprs_from_as_pattern(
 def _collect_call_exprs_from_mapping_pattern(
     *,
     keys: list[Expression],
-    values: list[Pattern],
+    values: Sequence[ConcretePattern],
     rest: Expression | None,
     calls: _CollectedCalls,
 ) -> None:
@@ -2957,8 +2952,8 @@ def _collect_call_exprs_from_mapping_pattern(
 def _collect_call_exprs_from_class_pattern(
     *,
     class_ref: Expression,
-    positionals: list[Pattern],
-    keyword_values: list[Pattern],
+    positionals: Sequence[ConcretePattern],
+    keyword_values: Sequence[ConcretePattern],
     calls: _CollectedCalls,
 ) -> None:
     """Collect call expressions from a class pattern."""
@@ -2968,27 +2963,11 @@ def _collect_call_exprs_from_class_pattern(
 
 
 def _collect_call_exprs_from_pattern(
-    pattern: Pattern,
+    pattern: ConcretePattern,
     calls: _CollectedCalls,
     /,
 ) -> None:
     """Collect call expressions from a match pattern."""
-    # Match patterns have the broad Pattern type, though the parser constructs
-    # only these concrete variants. Check and narrow before matching.
-    # See https://github.com/python/mypy/pull/22000.
-    assert isinstance(  # noqa: S101
-        pattern,
-        (
-            AsPattern,
-            OrPattern,
-            ValuePattern,
-            SingletonPattern,
-            SequencePattern,
-            StarredPattern,
-            MappingPattern,
-            ClassPattern,
-        ),
-    )
     match pattern:
         case AsPattern(pattern=inner_pattern, name=name):
             _collect_call_exprs_from_as_pattern(
