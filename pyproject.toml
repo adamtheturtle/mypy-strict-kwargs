@@ -51,6 +51,7 @@ dev = [
     "doccmd==2026.9.16.1",
     "interrogate==1.7.0",
     "mypy==2.4.0",
+    "mypy-pytest-parametrize==2026.10.5",
     "no-defaults==2026.9.1",
     "prek==0.5.4",
     "pydocstringformatter==1.0.0",
@@ -324,6 +325,7 @@ exclude_gitignore = true
 follow_untyped_imports = true
 strict = true
 plugins = [
+    "mypy_pytest_parametrize",
     "mypy_strict_kwargs",
     # See
     # https://mypy.readthedocs.io/en/latest/extending_mypy.html#useful-tools.
