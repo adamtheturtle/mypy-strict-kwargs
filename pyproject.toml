@@ -332,6 +332,7 @@ plugins = [
     # https://mypy.readthedocs.io/en/latest/extending_mypy.html#useful-tools.
     "mypy.plugins.proper_plugin",
 ]
+show_traceback = true
 num_workers = "auto"
 
 [tool.pyrefly]
