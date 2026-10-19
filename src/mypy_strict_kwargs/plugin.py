@@ -1685,12 +1685,16 @@ def _call_disallows_positional_argument(
     spread_lengths: dict[int, int],
 ) -> bool:
     """Return whether a call passes a transformed argument by position."""
+    # __new__ is implicitly static: super().__new__ still receives the
+    # class explicitly, so its first argument is preserved but not bound.
+    is_new = fullname.rsplit(sep=".", maxsplit=1)[-1] == "__new__"
+    skip_bound_argument = skip_bound_argument and not is_new
     transformed = _transform_callable_type(
         signature=signature,
         fullname=fullname,
         ignore_names=ignore_names,
         skip_bound_argument=skip_bound_argument,
-        preserved_positional_argument_count=0,
+        preserved_positional_argument_count=1 if is_new else 0,
     )
 
     positional_argument_counts: list[int] = []

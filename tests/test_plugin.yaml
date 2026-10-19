@@ -125,6 +125,34 @@
   out: |-
     main:6: error: Too many positional arguments for "method" of "B"  [call-arg]
 
+- case: super_new_explicit_class
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import Self
+
+    class Text(str):
+        def __new__(cls, code: str, /) -> Self:
+            return super().__new__(cls, object=code)
+
+    class MoreText(Text):
+        def __new__(cls, code: str, /) -> Self:
+            return super().__new__(cls, code)
+
+- case: super_new_keyword_capable_payload
+  mypy_config: |
+    [mypy]
+    plugins = mypy_strict_kwargs
+  main: |-
+    from typing import Self
+
+    class Text(str):
+        def __new__(cls, code: str, /) -> Self:
+            return super().__new__(cls, code)
+  out: |-
+    main:5: error: Too many positional arguments for "__new__" of "str"  [call-arg]
+
 - case: super_method_ignore_name
   mypy_config: |
     [mypy]
