@@ -55,7 +55,7 @@ dev = [
     "mypy==2.4.1",
     "mypy-pytest-parametrize==2026.10.5.1",
     "no-defaults==2026.9.1",
-    "prek==0.5.10",
+    "prek==0.5.11",
     "pydocstringformatter==1.0.0",
     "pylint[spelling]==4.1.4",
     "pylint-per-file-ignores==4.0.0",
