@@ -65,7 +65,7 @@ dev = [
     "pyroma==5.0.1",
     "pytest==9.2.0",
     "pytest-mypy-plugins==4.1.0",
-    "pyyaml==6.0.3",
+    "pyyaml==6.0.4",
     "ruff==0.17.6",
     # We add shellcheck-py not only for shell scripts and shell code blocks,
     # but also because having it installed means that ``actionlint-py`` will
